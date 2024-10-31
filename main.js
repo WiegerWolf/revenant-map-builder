@@ -2,13 +2,13 @@ const fs = require('fs').promises;
 const path = require("path");
 
 class InputStream {
-    constructor(buffer) {
-        this.dataView = new DataView(buffer);
+    constructor(arrayBuffer) {
+        this.dataView = new DataView(arrayBuffer);
         this.offset = 0;
     }
 
     readInt32() {
-        const value = this.dataView.getInt32(this.offset, true);
+        const value = this.dataView.getInt32(this.offset, true); // true for little-endian
         this.offset += 4;
         return value;
     }
@@ -25,6 +25,25 @@ class InputStream {
         return value;
     }
 
+    readUint16() {
+        const value = this.dataView.getUint16(this.offset, true);
+        this.offset += 2;
+        return value;
+    }
+
+    readUint8() {
+        const value = this.dataView.getUint8(this.offset);
+        this.offset += 1;
+        return value;
+    }
+
+    readString() {
+        const length = this.readUint8();
+        const bytes = new Uint8Array(this.dataView.buffer, this.dataView.byteOffset + this.offset, length);
+        this.offset += length;
+        return new TextDecoder('ascii').decode(bytes);
+    }
+
     skip(bytes) {
         this.offset += bytes;
     }
@@ -39,6 +58,35 @@ class InputStream {
 }
 
 class DatParser {
+    static OBJ_CLASSES = {
+        0: 'item',
+        1: 'weapon',
+        2: 'armor',
+        3: 'talisman',
+        4: 'food',
+        5: 'container',
+        6: 'lightsource',
+        7: 'tool',
+        8: 'money',
+        9: 'tile',
+        10: 'exit',
+        11: 'player',
+        12: 'character',
+        13: 'trap',
+        14: 'shadow',
+        15: 'helper',
+        16: 'key',
+        17: 'invcontainer',
+        18: 'poison',
+        19: 'unused1',
+        20: 'unused2',
+        21: 'ammo',
+        22: 'scroll',
+        23: 'rangedweapon',
+        24: 'unused3',
+        25: 'effect',
+        26: 'mapscroll'
+    };
     static SectorMapFCC = ('M'.charCodeAt(0) << 0) | 
                          ('A'.charCodeAt(0) << 8) | 
                          ('P'.charCodeAt(0) << 16) | 
@@ -48,39 +96,46 @@ class DatParser {
 
     static async loadFile(filePath) {
         try {
+            const fs = require('fs').promises;
             const buffer = await fs.readFile(filePath);
-            return DatParser.parse(buffer);
+            // Convert Buffer to ArrayBuffer
+            const arrayBuffer = buffer.buffer.slice(
+                buffer.byteOffset, 
+                buffer.byteOffset + buffer.byteLength
+            );
+            
+            return DatParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading file:', error);
             return null;
         }
-    }    
+    }  
 
     static parse(buffer) {
         const stream = new InputStream(buffer);
         let version = 0;
-
+    
         // Read number of objects
         let numObjects = stream.readInt32();
-
+    
         // Check if this is a sector map with header information
         if (numObjects === this.SectorMapFCC) {
             // Get sector map version
             version = stream.readInt32();
             numObjects = stream.readInt32();
         }
-
+    
         // Array to store all loaded objects
         const objects = [];
-
+    
         // Load each object
         for (let i = 0; i < numObjects; i++) {
-            const obj = this.loadObject(stream, version, true);
+            const obj = this.readObject(stream, version);
             if (obj) {
                 objects.push(obj);
             }
         }
-
+    
         return {
             version,
             numObjects,
@@ -198,6 +253,149 @@ class DatParser {
         };
     }
 
+    static readBaseObjectData(stream) {
+        return {
+            name: stream.readString(),
+            flags: new ObjectFlags(stream.readUint32()),
+            position: {
+                x: stream.readInt32(),
+                y: stream.readInt32(),
+                z: stream.readInt32()
+            }
+        };
+    }
+
+    static readBaseObjectDataAfterPos(stream) {
+        return {
+            state: stream.readUint16(),
+            inventNum: stream.readInt16(),
+            inventIndex: stream.readInt16(),
+            shadowMapId: stream.readInt32(),
+            rotation: {
+                x: stream.readUint8(),
+                y: stream.readUint8(),
+                z: stream.readUint8()
+            },
+            mapIndex: stream.readInt32()
+        };
+    }
+
+    static readVelocityData(stream) {
+        return {
+            velocity: {
+                x: stream.readInt32(),
+                y: stream.readInt32(),
+                z: stream.readInt32()
+            }
+        };
+    }
+
+    static readObjectStats(stream) {
+        const numStats = stream.readUint8();
+        const stats = [];
+
+        for (let i = 0; i < numStats; i++) {
+            stats.push({
+                value: stream.readInt32(),
+                encryptedId: stream.readUint32()
+            });
+        }
+
+        return stats;
+    }
+
+    static readCharacterData(stream) {
+        const complexObjVer = stream.readUint8();
+        const charObjVer = stream.readUint8();
+
+        const baseData = this.readBaseObjectData(stream);
+        const velocityData = this.readVelocityData(stream);
+        const baseDataAfterPos = this.readBaseObjectDataAfterPos(stream);
+
+        return {
+            complexObjVer,
+            charObjVer,
+            ...baseData,
+            ...velocityData,
+            ...baseDataAfterPos,
+            frame: stream.readInt16(),
+            frameRate: stream.readInt16(),
+            group: stream.readUint8(),
+            stats: this.readObjectStats(stream),
+            actionCode: stream.readUint8(),
+            actionName: stream.readString(),
+            timestamps: {
+                lastHealth: stream.readUint32(),
+                lastFatigue: stream.readUint32(),
+                lastMana: stream.readUint32(),
+                lastPoison: stream.readUint32()
+            },
+            teleport: {
+                x: stream.readInt32(),
+                y: stream.readInt32(),
+                z: stream.readInt32(),
+                level: stream.readInt32()
+            }
+        };
+    }
+
+    static readObjectData(stream, objClass, dataSize) {
+        const startPos = stream.getPos();
+
+        let data;
+        switch (objClass) {
+            case 12: // character
+                data = this.readCharacterData(stream);
+                break;
+            case 5: // container
+                data = {
+                    ...this.readBaseObjectData(stream),
+                    ...this.readVelocityData(stream),
+                    ...this.readBaseObjectDataAfterPos(stream),
+                    numItems: stream.readUint32()
+                };
+                break;
+            default:
+                data = {
+                    ...this.readBaseObjectData(stream),
+                    ...this.readBaseObjectDataAfterPos(stream)
+                };
+        }
+
+        // Ensure we've read exactly dataSize bytes
+        const bytesRead = stream.getPos() - startPos;
+        if (bytesRead < dataSize) {
+            stream.skip(dataSize - bytesRead);
+        }
+
+        return data;
+    }
+    static readObject(stream, version) {
+        let objVersion = version >= 8 ? stream.readInt16() : 0;
+        if (objVersion < 0) return null;
+
+        const objClass = stream.readInt16();
+        if (objClass < 0) return null;
+
+        const uniqueId = stream.readUint32();
+        const objDataSize = stream.readUint16();
+        const blockSize = stream.readUint16();
+
+        const data = this.readObjectData(stream, objClass, objDataSize);
+
+        return {
+            version: objVersion,
+            class: {
+                id: objClass,
+                name: this.OBJ_CLASSES[objClass] || 'unknown'
+            },
+            uniqueId,
+            dataSize: objDataSize,
+            blockSize,
+            data
+        };
+    }
+
     static getObjectClass(classId) {
         // Implement your object class lookup logic here
         return true; // Placeholder
@@ -221,6 +419,46 @@ class DatParser {
     static hasNonMapFlag(objectData) {
         // Implement flag checking logic here
         return false;
+    }
+}
+
+class ObjectFlags {
+    constructor(value) {
+        // Convert number to 32-bit binary string
+        const bits = (value >>> 0).toString(2).padStart(32, '0');
+        
+        this.of_immobile = !!parseInt(bits[31]);
+        this.of_editorlock = !!parseInt(bits[30]);
+        this.of_light = !!parseInt(bits[29]);
+        this.of_moving = !!parseInt(bits[28]);
+        this.of_animating = !!parseInt(bits[27]);
+        this.of_ai = !!parseInt(bits[26]);
+        this.of_disabled = !!parseInt(bits[25]);
+        this.of_invisible = !!parseInt(bits[24]);
+        this.of_editor = !!parseInt(bits[23]);
+        this.of_foreground = !!parseInt(bits[22]);
+        this.of_seldraw = !!parseInt(bits[21]);
+        this.of_reveal = !!parseInt(bits[20]);
+        this.of_kill = !!parseInt(bits[19]);
+        this.of_generated = !!parseInt(bits[18]);
+        this.of_animate = !!parseInt(bits[17]);
+        this.of_pulse = !!parseInt(bits[16]);
+        this.of_weightless = !!parseInt(bits[15]);
+        this.of_complex = !!parseInt(bits[14]);
+        this.of_notify = !!parseInt(bits[13]);
+        this.of_nonmap = !!parseInt(bits[12]);
+        this.of_onexit = !!parseInt(bits[11]);
+        this.of_pause = !!parseInt(bits[10]);
+        this.of_nowalk = !!parseInt(bits[9]);
+        this.of_paralize = !!parseInt(bits[8]);
+        this.of_nocollision = !!parseInt(bits[7]);
+        this.of_iced = !!parseInt(bits[6]);
+        this.of_virgin = !!parseInt(bits[5]);
+        this.of_loading = !!parseInt(bits[4]);
+        this.of_shadow = !!parseInt(bits[3]);
+        this.of_background = !!parseInt(bits[2]);
+        this.of_inventory = !!parseInt(bits[1]);
+        this.of_calledpredel = !!parseInt(bits[0]);
     }
 }
 
