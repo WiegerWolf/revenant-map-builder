@@ -87,10 +87,10 @@ class DatParser {
         25: 'effect',
         26: 'mapscroll'
     };
-    static SectorMapFCC = ('M'.charCodeAt(0) << 0) | 
-                         ('A'.charCodeAt(0) << 8) | 
-                         ('P'.charCodeAt(0) << 16) | 
-                         (' '.charCodeAt(0) << 24);
+    static SectorMapFCC = ('M'.charCodeAt(0) << 0) |
+        ('A'.charCodeAt(0) << 8) |
+        ('P'.charCodeAt(0) << 16) |
+        (' '.charCodeAt(0) << 24);
     static MAXOBJECTCLASSES = 256; // Adjust this value as needed
     static OBJCLASS_TILE = 1; // Adjust this value based on your needs
 
@@ -100,34 +100,34 @@ class DatParser {
             const buffer = await fs.readFile(filePath);
             // Convert Buffer to ArrayBuffer
             const arrayBuffer = buffer.buffer.slice(
-                buffer.byteOffset, 
+                buffer.byteOffset,
                 buffer.byteOffset + buffer.byteLength
             );
-            
+
             return DatParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading file:', error);
             return null;
         }
-    }  
+    }
 
     static parse(buffer) {
         const stream = new InputStream(buffer);
         let version = 0;
-    
+
         // Read number of objects
         let numObjects = stream.readInt32();
-    
+
         // Check if this is a sector map with header information
         if (numObjects === this.SectorMapFCC) {
             // Get sector map version
             version = stream.readInt32();
             numObjects = stream.readInt32();
         }
-    
+
         // Array to store all loaded objects
         const objects = [];
-    
+
         // Load each object
         for (let i = 0; i < numObjects; i++) {
             const obj = this.readObject(stream, version);
@@ -135,7 +135,7 @@ class DatParser {
                 objects.push(obj);
             }
         }
-    
+
         return {
             version,
             numObjects,
@@ -201,7 +201,7 @@ class DatParser {
         // Handle object type resolution
         if (objType < 0) {
             objType = this.findObjectType(uniqueId, objClass);
-            
+
             if (objType < 0) {
                 // Search all classes for the unique ID
                 for (let newObjClass = 0; newObjClass < this.MAXOBJECTCLASSES; newObjClass++) {
@@ -370,18 +370,58 @@ class DatParser {
 
         return data;
     }
-    static readObject(stream, version) {
+
+    static readObject(stream, version, isMap = true) {
+        let uniqueId = 0;
+        let objType = -1;
+        let blockSize = -1;
+        let forcesimple = false;
+        let corrupted = false;
+
+        // Get object version
         let objVersion = version >= 8 ? stream.readInt16() : 0;
-        if (objVersion < 0) return null;
+        if (objVersion < 0) return null;  // Placeholder in map version 8 or above
 
+        // Read object class
         const objClass = stream.readInt16();
-        if (objClass < 0) return null;
+        if (objClass < 0) return null;    // Placeholder for empty object slot
 
-        const uniqueId = stream.readUint32();
-        const objDataSize = stream.readUint16();
-        const blockSize = stream.readUint16();
+        // Handle different version cases
+        if (version < 1) {
+            // Version 0 - No Unique ID's, read objtype directly
+            objType = stream.readInt16();
+            uniqueId = 0;
+            blockSize = -1;
+        }
+        else if (version < 4) {
+            // Version 1-3 - Unique ID's used instead of objtype
+            objType = -1;
+            uniqueId = stream.readUint32();
+            blockSize = -1;
+        }
+        else {
+            // Version 4+ has block size
+            objType = -1;
+            uniqueId = stream.readUint32();
+            blockSize = stream.readInt16();
+        }
 
-        const data = this.readObjectData(stream, objClass, objDataSize);
+        // Validate object class
+        const objectClass = this.getObjectClass(objClass);
+        if (!objectClass) {
+            if (blockSize >= 0) {
+                // Skip this object
+                stream.skip(blockSize);
+                return null;
+            } else {
+                // Try to fix it by assuming it's a tile
+                objClass = this.OBJCLASS_TILE;
+                corrupted = true;
+            }
+        }
+
+        // If we got this far, read the object data
+        const data = this.readObjectData(stream, objClass, blockSize);
 
         return {
             version: objVersion,
@@ -389,16 +429,18 @@ class DatParser {
                 id: objClass,
                 name: this.OBJ_CLASSES[objClass] || 'unknown'
             },
+            type: objType,
             uniqueId,
-            dataSize: objDataSize,
             blockSize,
+            corrupted,
+            forcesimple,
             data
         };
     }
 
     static getObjectClass(classId) {
-        // Implement your object class lookup logic here
-        return true; // Placeholder
+        // For now, just check if it's a valid class ID
+        return this.OBJ_CLASSES.hasOwnProperty(classId);
     }
 
     static findObjectType(uniqueId, classId) {
@@ -426,7 +468,7 @@ class ObjectFlags {
     constructor(value) {
         // Convert number to 32-bit binary string
         const bits = (value >>> 0).toString(2).padStart(32, '0');
-        
+
         this.of_immobile = !!parseInt(bits[31]);
         this.of_editorlock = !!parseInt(bits[30]);
         this.of_light = !!parseInt(bits[29]);
@@ -464,18 +506,18 @@ class ObjectFlags {
 
 async function main() {
     const mapDir = path.join('_INSTALLED_GAME', 'Revenant', 'Modules', 'Ahkuilon', 'Map');
-    
+
     try {
         // Read all files in the directory
         const files = await fs.readdir(mapDir);
-        
+
         // Filter for .dat files and process each one
         const datFiles = files.filter(file => file.toLowerCase().endsWith('.dat'));
-        
+
         for (const datFile of datFiles) {
             const filePath = path.join(mapDir, datFile);
             console.log(`Processing ${datFile}...`);
-            
+
             const result = await DatParser.loadFile(filePath);
             if (result && result.numObjects) {
                 debugger;
