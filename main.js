@@ -77,7 +77,7 @@ class CGSResourceParser {
 
     static parse(arrayBuffer) {
         const stream = new InputStream(arrayBuffer);
-        
+
         // Read FileResHdr according to the C++ structure
         const header = {
             resmagic: stream.readUint32(),    // DWORD resmagic
@@ -88,25 +88,25 @@ class CGSResourceParser {
             objsize: stream.readUint32(),     // DWORD objsize
             hdrsize: stream.readUint32()      // DWORD hdrsize
         };
-    
+
         // Add compression type constants
         const COMP_NONE = 0;  // No Compression
         const COMP_ZIP = 1;   // ZIP implode compression
-    
+
         // Validate magic number and version
         if (header.resmagic !== this.RESMAGIC) {
             throw new Error('Not a valid CGS resource file');
         }
-    
+
         if (header.version < this.RESVERSION) {
             throw new Error('Resource file version too old');
         }
-    
+
         // Skip header data if present
         if (header.hdrsize > 0) {
             stream.skip(header.hdrsize);
         }
-    
+
         // Read bitmap table if present
         const bitmapTable = [];
         if (header.topbm > 0) {
@@ -114,7 +114,7 @@ class CGSResourceParser {
                 bitmapTable.push(stream.readUint32());
             }
         }
-    
+
         // Read bitmaps
         const bitmaps = [];
         for (const offset of bitmapTable) {
@@ -130,41 +130,48 @@ class CGSResourceParser {
         };
     }
 
-    static readBitmap(stream, arrayBuffer) { // Add arrayBuffer parameter
+    static readBitmap(stream, arrayBuffer) {
+        // First read TBitmapData structure fields
         const bitmap = {
-            width: stream.readUint16(),
-            height: stream.readUint16(),
-            flags: stream.readUint16(),
-            hotx: stream.readInt16(),
-            hoty: stream.readInt16(),
-            transparent: stream.readUint16(),
-            compression: stream.readUint16(),
-            bytewidth: stream.readUint16(),
-            bpp: stream.readUint16(),
-            palette: null,
-            data: null
+            // Core TBitmapData fields
+            width: stream.readInt16(),      // int width
+            height: stream.readInt16(),     // int height
+            regx: stream.readInt16(),       // int regx (registration point x)
+            regy: stream.readInt16(),       // int regy (registration point y)
+            flags: stream.readUint32(),     // DWORD flags
+            drawmode: stream.readUint32(),  // DWORD drawmode
+            keycolor: stream.readUint32(),  // DWORD keycolor
+            aliassize: stream.readUint32(), // DWORD aliassize
+            alias: stream.readUint32(),     // OFFSET alias
+            alphasize: stream.readUint32(), // DWORD alphasize
+            alpha: stream.readUint32(),     // OFFSET alpha
+            zbuffersize: stream.readUint32(), // DWORD zbuffersize
+            zbuffer: stream.readUint32(),   // OFFSET zbuffer
+            normalsize: stream.readUint32(), // DWORD normalsize
+            normal: stream.readUint32(),    // OFFSET normal
+            palettesize: stream.readUint32(), // DWORD palettesize
+            palette: null,                  // Will be filled if BM_8BIT flag is set
+            datasize: stream.readUint32(),  // DWORD datasize
+            data: null                      // Will be filled with bitmap data
         };
 
-
-        // Sanity check
+        // Sanity check matching the C++ code
         if (bitmap.width > 8192 || bitmap.height > 8192) {
             throw new Error('Corrupted bitmap dimensions');
         }
 
-        // Read palette if 8-bit
+        // Read palette if 8-bit (BM_8BIT flag)
         if (bitmap.flags & 0x0001) { // BM_8BIT
             bitmap.palette = new Array(256);
             for (let i = 0; i < 256; i++) {
                 bitmap.palette[i] = {
-                    r: stream.readUint8(),
-                    g: stream.readUint8(),
-                    b: stream.readUint8(),
-                    a: stream.readUint8()
+                    colors: stream.readUint16(),     // WORD colors[256]
+                    rgbcolors: stream.readUint32()   // DWORD rgbcolors[256]
                 };
             }
         }
 
-        // Calculate data size and read bitmap data
+        // Calculate data size based on bitmap format
         let dataSize;
         if (bitmap.flags & 0x0001) { // 8-bit
             dataSize = bitmap.width * bitmap.height;
@@ -175,20 +182,23 @@ class CGSResourceParser {
         }
 
         // Read raw bitmap data
-        bitmap.data = new Uint8Array(arrayBuffer, stream.getPos(), dataSize);
-        
-        // Convert 15-bit to 16-bit if necessary
+        const dataOffset = stream.getPos();
+        bitmap.data = new Uint8Array(arrayBuffer, dataOffset, dataSize);
+        stream.skip(dataSize);
+
+        // Convert 15-bit to 16-bit if necessary (matching C++ Convert15to16)
         if (bitmap.flags & 0x0002) { // BM_15BIT
             this.convert15to16(bitmap);
         }
 
-        // Convert palette from 15-bit to 16-bit if necessary
+        // Convert palette from 15-bit to 16-bit if necessary (matching C++ ConvertPal15to16)
         if (bitmap.flags & 0x0001 && bitmap.flags & 0x0002) { // BM_8BIT && BM_15BIT
             this.convertPal15to16(bitmap);
         }
 
         return bitmap;
     }
+
 
     static convert15to16(bitmap) {
         // Convert 15-bit color to 16-bit color
@@ -271,17 +281,17 @@ class ClassDefParser {
             uniqueTypeId: null,
             classes: new Map()
         };
-        
+
         let currentClass = null;
         let currentSection = null;
         let inStats = false;
         let inObjStats = false;
 
         const lines = content.split('\n');
-        
+
         for (let line of lines) {
             line = line.trim();
-            
+
             if (line === '' || line.startsWith('//')) continue;
 
             if (line.startsWith('Unique Type ID')) {
@@ -356,7 +366,7 @@ class ClassDefParser {
                 if (match) {
                     const values = match[4].split(',').map(v => parseInt(v.trim()));
                     const extra = match[5] ? match[5].split(',').map(v => v.trim()) : [];
-                    
+
                     // Create mapped stats object
                     const mappedStats = {};
                     currentClass.stats.forEach((stat, index) => {
@@ -807,7 +817,7 @@ class DatParser {
 
         // After determining objClass and uniqueId
         const typeInfo = this.getTypeInfo(uniqueId, objClass);
-        
+
         // If we have type info and it has a model path, load the resource
         if (typeInfo && typeInfo.model) {
             // Store the resource loading promise
@@ -883,14 +893,14 @@ class DatParser {
 
     static async buildFileCache(baseDir) {
         const cache = new Map();
-        
+
         async function scanDirectory(dir) {
             const entries = await fs.readdir(dir, { withFileTypes: true });
-            
+
             for (const entry of entries) {
                 const fullPath = path.join(dir, entry.name);
                 const relativePath = path.relative(baseDir, fullPath).toLowerCase();
-                
+
                 if (entry.isDirectory()) {
                     await scanDirectory(fullPath);
                 } else {
@@ -924,12 +934,12 @@ class DatParser {
     static async loadResourceFile(gameDir, resourcePath) {
         try {
             const resourcesDir = path.join(gameDir, 'Resources');
-            
+
             // Prepend 'Imagery' to the resource path
             const imageryPath = path.join('Imagery', resourcePath);
-            
+
             const realPath = await this.findRealPath(resourcesDir, imageryPath);
-            
+
             if (!realPath) {
                 console.warn(`Resource file not found: ${resourcePath}`);
                 return null;
@@ -1008,7 +1018,7 @@ async function main() {
         // Build the file cache first
         console.log('Building file cache...');
         await DatParser.buildFileCache(resourcesDir);
-        
+
         // Then proceed with the rest of the processing
         await DatParser.loadClassDefinitions(gameDir);
 
@@ -1024,7 +1034,7 @@ async function main() {
                 console.log(`File: ${datFile}`);
                 console.log('Version:', result.version);
                 console.log('Number of objects:', result.numObjects);
-                
+
                 // Process each object's resource
                 for (const obj of result.objects) {
                     if (obj.typeInfo && obj.typeInfo.resourcePromise) {
@@ -1032,7 +1042,7 @@ async function main() {
                         // The debugger will break in loadResourceFile when resources are loaded
                     }
                 }
-                
+
                 console.log('-------------------');
             }
         }
