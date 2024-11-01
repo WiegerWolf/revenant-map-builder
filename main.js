@@ -86,18 +86,16 @@ class ClassDefParser {
             
             if (line === '' || line.startsWith('//')) continue;
 
-            // Parse global Unique Type ID
             if (line.startsWith('Unique Type ID')) {
                 result.uniqueTypeId = parseInt(line.split('=')[1].trim(), 16);
                 continue;
             }
 
-            // Start of a new class definition
             if (line.startsWith('CLASS')) {
                 currentClass = {
                     className: line.split('"')[1],
-                    stats: {},
-                    objStats: {},  // For classes that have OBJSTATS section
+                    stats: [],        // Changed to array to maintain order
+                    objStats: [],     // Changed to array to maintain order
                     types: []
                 };
                 result.classes.set(currentClass.className, currentClass);
@@ -107,10 +105,8 @@ class ClassDefParser {
                 continue;
             }
 
-            // Skip if we're not in a class definition yet
             if (!currentClass) continue;
 
-            // Section markers
             if (line === 'STATS') {
                 currentSection = 'stats';
                 inStats = false;
@@ -124,7 +120,6 @@ class ClassDefParser {
                 continue;
             }
 
-            // Handle BEGIN/END markers
             if (line === 'BEGIN') {
                 if (currentSection === 'stats') inStats = true;
                 if (currentSection === 'objStats') inObjStats = true;
@@ -136,36 +131,64 @@ class ClassDefParser {
                 continue;
             }
 
-            // Parse sections
             if (inStats && currentSection === 'stats') {
                 const parts = line.split(' ').filter(part => part !== '');
                 if (parts.length >= 5) {
-                    currentClass.stats[parts[0]] = {
+                    currentClass.stats.push({
+                        name: parts[0],
                         id: parts[1],
                         default: parseInt(parts[2]),
                         min: parseInt(parts[3]),
                         max: parseInt(parts[4])
-                    };
+                    });
                 }
             } else if (inObjStats && currentSection === 'objStats') {
                 const parts = line.split(' ').filter(part => part !== '');
                 if (parts.length >= 5) {
-                    currentClass.objStats[parts[0]] = {
+                    currentClass.objStats.push({
+                        name: parts[0],
                         id: parts[1],
                         default: parseInt(parts[2]),
                         min: parseInt(parts[3]),
                         max: parseInt(parts[4])
-                    };
+                    });
                 }
             } else if (currentSection === 'types') {
                 const match = line.match(/"([^"]+)"\s+"([^"]+)"\s+(0x[0-9a-fA-F]+)\s+{([^}]+)}\s*{([^}]*)}/)
                 if (match) {
+                    const values = match[4].split(',').map(v => parseInt(v.trim()));
+                    const extra = match[5] ? match[5].split(',').map(v => v.trim()) : [];
+                    
+                    // Create mapped stats object
+                    const mappedStats = {};
+                    currentClass.stats.forEach((stat, index) => {
+                        if (index < values.length) {
+                            mappedStats[stat.name] = {
+                                value: values[index],
+                                ...stat
+                            };
+                        }
+                    });
+
+                    // Create mapped objStats object if they exist
+                    const mappedObjStats = {};
+                    if (currentClass.objStats.length > 0 && extra.length > 0) {
+                        currentClass.objStats.forEach((stat, index) => {
+                            if (index < extra.length) {
+                                mappedObjStats[stat.name] = {
+                                    value: parseInt(extra[index]) || extra[index],
+                                    ...stat
+                                };
+                            }
+                        });
+                    }
+
                     currentClass.types.push({
                         name: match[1],
                         model: match[2],
                         id: parseInt(match[3], 16),
-                        values: match[4].split(',').map(v => parseInt(v.trim())),
-                        extra: match[5] ? match[5].split(',').map(v => v.trim()) : []
+                        stats: mappedStats,
+                        objStats: mappedObjStats
                     });
                 }
             }
@@ -580,6 +603,9 @@ class DatParser {
             }
         }
 
+
+        // After determining objClass and uniqueId
+        const typeInfo = this.getTypeInfo(uniqueId, objClass);
         // If we got this far, read the object data
         const data = this.readObjectData(stream, objClass, blockSize);
 
@@ -590,6 +616,7 @@ class DatParser {
                 name: this.OBJ_CLASSES[objClass] || 'unknown'
             },
             type: objType,
+            typeInfo,
             uniqueId,
             blockSize,
             corrupted,
@@ -604,14 +631,45 @@ class DatParser {
     }
 
     static findObjectType(uniqueId, classId) {
-        // Look through all class definitions
-        for (const [_, classDef] of this.classDefs) {
-            const typeIndex = classDef.types.findIndex(t => t.id === uniqueId);
-            if (typeIndex !== -1) {
-                return typeIndex;
+        // Get class name from classId
+        const className = this.OBJ_CLASSES[classId];
+        if (!className) return -1;
+
+        // Get class definition from our loaded class definitions
+        const classDefs = this.classDefs.classes;
+        const classDef = classDefs.get(className.toUpperCase());
+        if (!classDef) return -1;
+
+        // Find the type with matching uniqueId
+        const typeIndex = classDef.types.findIndex(t => t.id === uniqueId);
+        if (typeIndex !== -1) {
+            return typeIndex;
+        }
+
+        // If not found in the expected class, optionally search all classes
+        for (const [otherClassName, otherClassDef] of classDefs) {
+            if (otherClassName !== className.toUpperCase()) {
+                const index = otherClassDef.types.findIndex(t => t.id === uniqueId);
+                if (index !== -1) {
+                    console.warn(`Found object type ${uniqueId.toString(16)} in class ${otherClassName} instead of ${className}`);
+                    return index;
+                }
             }
         }
-        return 0; // Default return if not found
+
+        return -1;
+    }
+
+    // Add a helper method to get type information
+    static getTypeInfo(uniqueId, classId) {
+        const className = this.OBJ_CLASSES[classId];
+        if (!className) return null;
+
+        const classDefs = this.classDefs.classes;
+        const classDef = classDefs.get(className.toUpperCase());
+        if (!classDef) return null;
+
+        return classDef.types.find(t => t.id === uniqueId) || null;
     }
 
     static loadObjectData(stream, version, objVersion, forcesimple) {
@@ -688,7 +746,6 @@ async function main() {
 
             const result = await DatParser.loadFile(filePath);
             if (result && result.numObjects) {
-                debugger;
                 console.log(`File: ${datFile}`);
                 console.log('Version:', result.version);
                 console.log('Number of objects:', result.numObjects);
@@ -696,6 +753,7 @@ async function main() {
             }
         }
     } catch (error) {
+        debugger;
         console.error('Error reading directory:', error);
     }
 }
