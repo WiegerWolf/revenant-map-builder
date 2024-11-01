@@ -57,6 +57,124 @@ class InputStream {
     }
 }
 
+class ClassDefParser {
+    static async loadFile(filePath) {
+        try {
+            const content = await fs.readFile(filePath, 'utf8');
+            return ClassDefParser.parse(content);
+        } catch (error) {
+            console.error('Error loading class definition file:', error);
+            return null;
+        }
+    }
+
+    static parse(content) {
+        const result = {
+            uniqueTypeId: null,
+            classes: new Map()
+        };
+        
+        let currentClass = null;
+        let currentSection = null;
+        let inStats = false;
+        let inObjStats = false;
+
+        const lines = content.split('\n');
+        
+        for (let line of lines) {
+            line = line.trim();
+            
+            if (line === '' || line.startsWith('//')) continue;
+
+            // Parse global Unique Type ID
+            if (line.startsWith('Unique Type ID')) {
+                result.uniqueTypeId = parseInt(line.split('=')[1].trim(), 16);
+                continue;
+            }
+
+            // Start of a new class definition
+            if (line.startsWith('CLASS')) {
+                currentClass = {
+                    className: line.split('"')[1],
+                    stats: {},
+                    objStats: {},  // For classes that have OBJSTATS section
+                    types: []
+                };
+                result.classes.set(currentClass.className, currentClass);
+                currentSection = null;
+                inStats = false;
+                inObjStats = false;
+                continue;
+            }
+
+            // Skip if we're not in a class definition yet
+            if (!currentClass) continue;
+
+            // Section markers
+            if (line === 'STATS') {
+                currentSection = 'stats';
+                inStats = false;
+                continue;
+            } else if (line === 'OBJSTATS') {
+                currentSection = 'objStats';
+                inObjStats = false;
+                continue;
+            } else if (line === 'TYPES') {
+                currentSection = 'types';
+                continue;
+            }
+
+            // Handle BEGIN/END markers
+            if (line === 'BEGIN') {
+                if (currentSection === 'stats') inStats = true;
+                if (currentSection === 'objStats') inObjStats = true;
+                continue;
+            }
+            if (line === 'END') {
+                inStats = false;
+                inObjStats = false;
+                continue;
+            }
+
+            // Parse sections
+            if (inStats && currentSection === 'stats') {
+                const parts = line.split(' ').filter(part => part !== '');
+                if (parts.length >= 5) {
+                    currentClass.stats[parts[0]] = {
+                        id: parts[1],
+                        default: parseInt(parts[2]),
+                        min: parseInt(parts[3]),
+                        max: parseInt(parts[4])
+                    };
+                }
+            } else if (inObjStats && currentSection === 'objStats') {
+                const parts = line.split(' ').filter(part => part !== '');
+                if (parts.length >= 5) {
+                    currentClass.objStats[parts[0]] = {
+                        id: parts[1],
+                        default: parseInt(parts[2]),
+                        min: parseInt(parts[3]),
+                        max: parseInt(parts[4])
+                    };
+                }
+            } else if (currentSection === 'types') {
+                const match = line.match(/"([^"]+)"\s+"([^"]+)"\s+(0x[0-9a-fA-F]+)\s+{([^}]+)}\s*{([^}]*)}/)
+                if (match) {
+                    currentClass.types.push({
+                        name: match[1],
+                        model: match[2],
+                        id: parseInt(match[3], 16),
+                        values: match[4].split(',').map(v => parseInt(v.trim())),
+                        extra: match[5] ? match[5].split(',').map(v => v.trim()) : []
+                    });
+                }
+            }
+        }
+
+        return result;
+    }
+}
+
 class DatParser {
     static OBJ_CLASSES = {
         0: 'item',
@@ -141,6 +259,20 @@ class DatParser {
             numObjects,
             objects
         };
+    }
+
+    static classDefs = new Map();
+
+    static async loadClassDefinitions(gameDir) {
+        const classDefPath = path.join(gameDir, 'Resources', 'class.def');
+        try {
+            const classDefs = await ClassDefParser.loadFile(classDefPath);
+            if (classDefs) {
+                this.classDefs = classDefs;
+            }
+        } catch (error) {
+            console.error('Error loading class definitions:', error);
+        }
     }
 
     static loadObject(stream, version, isMap) {
@@ -427,7 +559,7 @@ class DatParser {
             if (objType < 0) {
                 // Search all classes for the unique ID
                 for (let newObjClass = 0; newObjClass < this.MAXOBJECTCLASSES; newObjClass++) {
-                    const newType = this.findObjectType(uniqueId, newObjClass); 
+                    const newType = this.findObjectType(uniqueId, newObjClass);
                     if (newType >= 0) {
                         objClass = newObjClass;
                         objType = newType;
@@ -443,7 +575,7 @@ class DatParser {
                     return null;
                 } else {
                     objType = 0;
-                    corrupted = true; 
+                    corrupted = true;
                 }
             }
         }
@@ -472,8 +604,14 @@ class DatParser {
     }
 
     static findObjectType(uniqueId, classId) {
-        // Implement your object type lookup logic here
-        return 0; // Placeholder
+        // Look through all class definitions
+        for (const [_, classDef] of this.classDefs) {
+            const typeIndex = classDef.types.findIndex(t => t.id === uniqueId);
+            if (typeIndex !== -1) {
+                return typeIndex;
+            }
+        }
+        return 0; // Default return if not found
     }
 
     static loadObjectData(stream, version, objVersion, forcesimple) {
@@ -533,13 +671,15 @@ class ObjectFlags {
 }
 
 async function main() {
-    const mapDir = path.join('_INSTALLED_GAME', 'Revenant', 'Modules', 'Ahkuilon', 'Map');
+    const gameDir = path.join('_INSTALLED_GAME', 'Revenant');
+    const mapDir = path.join(gameDir, 'Modules', 'Ahkuilon', 'Map');
 
     try {
+        // Load class definitions first
+        await DatParser.loadClassDefinitions(gameDir);
+
         // Read all files in the directory
         const files = await fs.readdir(mapDir);
-
-        // Filter for .dat files and process each one
         const datFiles = files.filter(file => file.toLowerCase().endsWith('.dat'));
 
         for (const datFile of datFiles) {
