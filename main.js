@@ -432,11 +432,14 @@ class DatParser {
     static MAXOBJECTCLASSES = 64;
     static OBJCLASS_TILE = 9;
 
-    static async loadFile(filePath) {
+    // Add static property for game directory
+    static gameDir = '';
+
+    // Modify the main loading function to accept gameDir
+    static async loadFile(filePath, gameDir) {
+        this.gameDir = gameDir; // Store gameDir for resource loading
         try {
-            const fs = require('fs').promises;
             const buffer = await fs.readFile(filePath);
-            // Convert Buffer to ArrayBuffer
             const arrayBuffer = buffer.buffer.slice(
                 buffer.byteOffset,
                 buffer.byteOffset + buffer.byteLength
@@ -803,7 +806,13 @@ class DatParser {
 
         // After determining objClass and uniqueId
         const typeInfo = this.getTypeInfo(uniqueId, objClass);
-        // If we got this far, read the object data
+        
+        // If we have type info and it has a model path, load the resource
+        if (typeInfo && typeInfo.model) {
+            // Store the resource loading promise
+            typeInfo.resourcePromise = this.loadResourceFile(this.gameDir, typeInfo.model);
+        }
+
         const data = this.readObjectData(stream, objClass, blockSize);
 
         return {
@@ -869,6 +878,71 @@ class DatParser {
         return classDef.types.find(t => t.id === uniqueId) || null;
     }
 
+    static fileCache = new Map(); // Cache for file paths
+
+    static async buildFileCache(baseDir) {
+        const cache = new Map();
+        
+        async function scanDirectory(dir) {
+            const entries = await fs.readdir(dir, { withFileTypes: true });
+            
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                const relativePath = path.relative(baseDir, fullPath).toLowerCase();
+                
+                if (entry.isDirectory()) {
+                    await scanDirectory(fullPath);
+                } else {
+                    cache.set(relativePath, fullPath);
+                }
+            }
+        }
+
+        await scanDirectory(baseDir);
+        return cache;
+    }
+
+    static async findRealPath(baseDir, searchPath) {
+        // Normalize the search path
+        const normalizedSearch = searchPath.toLowerCase().replace(/\\/g, path.sep);
+
+        // Initialize cache if needed
+        if (this.fileCache.size === 0) {
+            this.fileCache = await this.buildFileCache(baseDir);
+        }
+
+        // Look up the real path in the cache
+        const realPath = this.fileCache.get(normalizedSearch);
+        if (realPath) {
+            return realPath;
+        }
+
+        return null;
+    }
+
+    static async loadResourceFile(gameDir, resourcePath) {
+        try {
+            const resourcesDir = path.join(gameDir, 'Resources');
+            
+            // Prepend 'Imagery' to the resource path
+            const imageryPath = path.join('Imagery', resourcePath);
+            
+            const realPath = await this.findRealPath(resourcesDir, imageryPath);
+            
+            if (!realPath) {
+                console.warn(`Resource file not found: ${resourcePath}`);
+                return null;
+            }
+
+            const resource = await CGSResourceParser.loadFile(realPath);
+            debugger;
+            return resource;
+        } catch (error) {
+            console.error(`Error loading resource file ${resourcePath}:`, error);
+            return null;
+        }
+    }
+
     static loadObjectData(stream, version, objVersion, forcesimple) {
         // Implement object-specific loading logic here
         return {};
@@ -928,12 +1002,16 @@ class ObjectFlags {
 async function main() {
     const gameDir = path.join('_INSTALLED_GAME', 'Revenant');
     const mapDir = path.join(gameDir, 'Modules', 'Ahkuilon', 'Map');
+    const resourcesDir = path.join(gameDir, 'Resources');
 
     try {
-        // Load class definitions first
+        // Build the file cache first
+        console.log('Building file cache...');
+        await DatParser.buildFileCache(resourcesDir);
+        
+        // Then proceed with the rest of the processing
         await DatParser.loadClassDefinitions(gameDir);
 
-        // Read all files in the directory
         const files = await fs.readdir(mapDir);
         const datFiles = files.filter(file => file.toLowerCase().endsWith('.dat'));
 
@@ -941,11 +1019,20 @@ async function main() {
             const filePath = path.join(mapDir, datFile);
             console.log(`Processing ${datFile}...`);
 
-            const result = await DatParser.loadFile(filePath);
+            const result = await DatParser.loadFile(filePath, gameDir);
             if (result && result.numObjects) {
                 console.log(`File: ${datFile}`);
                 console.log('Version:', result.version);
                 console.log('Number of objects:', result.numObjects);
+                
+                // Process each object's resource
+                for (const obj of result.objects) {
+                    if (obj.typeInfo && obj.typeInfo.resourcePromise) {
+                        const resource = await obj.typeInfo.resourcePromise;
+                        // The debugger will break in loadResourceFile when resources are loaded
+                    }
+                }
+                
                 console.log('-------------------');
             }
         }
