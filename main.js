@@ -78,35 +78,35 @@ class CGSResourceParser {
     static parse(arrayBuffer) {
         const stream = new InputStream(arrayBuffer);
         
-        // Read FileResHdr
+        // Read FileResHdr according to the C++ structure
         const header = {
-            resmagic: stream.readUint32(),
-            version: stream.readUint32(),
-            comptype: stream.readUint32(),
-            objsize: stream.readUint32(),
-            datasize: stream.readUint32(),
-            hdrsize: stream.readUint32(),
-            topbm: stream.readUint32()
+            resmagic: stream.readUint32(),    // DWORD resmagic
+            topbm: stream.readUint16(),       // WORD topbm
+            comptype: stream.readUint8(),     // BYTE comptype
+            version: stream.readUint8(),      // BYTE version
+            datasize: stream.readUint32(),    // DWORD datasize
+            objsize: stream.readUint32(),     // DWORD objsize
+            hdrsize: stream.readUint32()      // DWORD hdrsize
         };
-
+    
+        // Add compression type constants
+        const COMP_NONE = 0;  // No Compression
+        const COMP_ZIP = 1;   // ZIP implode compression
+    
         // Validate magic number and version
         if (header.resmagic !== this.RESMAGIC) {
             throw new Error('Not a valid CGS resource file');
         }
-
+    
         if (header.version < this.RESVERSION) {
             throw new Error('Resource file version too old');
         }
-
-        if (header.version > this.RESVERSION) {
-            throw new Error('Resource file version too new');
-        }
-
+    
         // Skip header data if present
         if (header.hdrsize > 0) {
             stream.skip(header.hdrsize);
         }
-
+    
         // Read bitmap table if present
         const bitmapTable = [];
         if (header.topbm > 0) {
@@ -114,7 +114,7 @@ class CGSResourceParser {
                 bitmapTable.push(stream.readUint32());
             }
         }
-
+    
         // Read bitmaps
         const bitmaps = [];
         for (const offset of bitmapTable) {
@@ -122,13 +122,14 @@ class CGSResourceParser {
             const bitmap = this.readBitmap(stream);
             bitmaps.push(bitmap);
         }
-
+    
         return {
             header,
             bitmapTable,
             bitmaps
         };
     }
+    
 
     static readBitmap(stream) {
         const bitmap = {
