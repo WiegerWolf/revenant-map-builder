@@ -91,8 +91,8 @@ class DatParser {
         ('A'.charCodeAt(0) << 8) |
         ('P'.charCodeAt(0) << 16) |
         (' '.charCodeAt(0) << 24);
-    static MAXOBJECTCLASSES = 256; // Adjust this value as needed
-    static OBJCLASS_TILE = 1; // Adjust this value based on your needs
+    static MAXOBJECTCLASSES = 64;
+    static OBJCLASS_TILE = 9;
 
     static async loadFile(filePath) {
         try {
@@ -417,6 +417,34 @@ class DatParser {
                 // Try to fix it by assuming it's a tile
                 objClass = this.OBJCLASS_TILE;
                 corrupted = true;
+            }
+        }
+
+        // Handle object type resolution
+        if (objType < 0) {
+            objType = this.findObjectType(uniqueId, objClass);
+
+            if (objType < 0) {
+                // Search all classes for the unique ID
+                for (let newObjClass = 0; newObjClass < this.MAXOBJECTCLASSES; newObjClass++) {
+                    const newType = this.findObjectType(uniqueId, newObjClass); 
+                    if (newType >= 0) {
+                        objClass = newObjClass;
+                        objType = newType;
+                        forcesimple = true;
+                        break;
+                    }
+                }
+            }
+
+            if (objType < 0) {
+                if (blockSize >= 0) {
+                    stream.skip(blockSize);
+                    return null;
+                } else {
+                    objType = 0;
+                    corrupted = true; 
+                }
             }
         }
 
