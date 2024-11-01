@@ -119,19 +119,18 @@ class CGSResourceParser {
         const bitmaps = [];
         for (const offset of bitmapTable) {
             stream.setPos(offset);
-            const bitmap = this.readBitmap(stream);
+            const bitmap = this.readBitmap(stream, arrayBuffer); // Pass arrayBuffer here
             bitmaps.push(bitmap);
         }
-    
+
         return {
             header,
             bitmapTable,
             bitmaps
         };
     }
-    
 
-    static readBitmap(stream) {
+    static readBitmap(stream, arrayBuffer) { // Add arrayBuffer parameter
         const bitmap = {
             width: stream.readUint16(),
             height: stream.readUint16(),
@@ -145,6 +144,7 @@ class CGSResourceParser {
             palette: null,
             data: null
         };
+
 
         // Sanity check
         if (bitmap.width > 8192 || bitmap.height > 8192) {
@@ -936,7 +936,6 @@ class DatParser {
             }
 
             const resource = await CGSResourceParser.loadFile(realPath);
-            debugger;
             return resource;
         } catch (error) {
             console.error(`Error loading resource file ${resourcePath}:`, error);
