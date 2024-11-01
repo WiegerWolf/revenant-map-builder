@@ -57,6 +57,203 @@ class InputStream {
     }
 }
 
+class CGSResourceParser {
+    static RESMAGIC = 0x52534743; // 'CGSR' in little-endian
+    static RESVERSION = 1;
+
+    static async loadFile(filePath) {
+        try {
+            const buffer = await fs.readFile(filePath);
+            const arrayBuffer = buffer.buffer.slice(
+                buffer.byteOffset,
+                buffer.byteOffset + buffer.byteLength
+            );
+            return CGSResourceParser.parse(arrayBuffer);
+        } catch (error) {
+            console.error('Error loading CGS resource file:', error);
+            return null;
+        }
+    }
+
+    static parse(arrayBuffer) {
+        const stream = new InputStream(arrayBuffer);
+        
+        // Read FileResHdr
+        const header = {
+            resmagic: stream.readUint32(),
+            version: stream.readUint32(),
+            comptype: stream.readUint32(),
+            objsize: stream.readUint32(),
+            datasize: stream.readUint32(),
+            hdrsize: stream.readUint32(),
+            topbm: stream.readUint32()
+        };
+
+        // Validate magic number and version
+        if (header.resmagic !== this.RESMAGIC) {
+            throw new Error('Not a valid CGS resource file');
+        }
+
+        if (header.version < this.RESVERSION) {
+            throw new Error('Resource file version too old');
+        }
+
+        if (header.version > this.RESVERSION) {
+            throw new Error('Resource file version too new');
+        }
+
+        // Skip header data if present
+        if (header.hdrsize > 0) {
+            stream.skip(header.hdrsize);
+        }
+
+        // Read bitmap table if present
+        const bitmapTable = [];
+        if (header.topbm > 0) {
+            for (let i = 0; i < header.topbm; i++) {
+                bitmapTable.push(stream.readUint32());
+            }
+        }
+
+        // Read bitmaps
+        const bitmaps = [];
+        for (const offset of bitmapTable) {
+            stream.setPos(offset);
+            const bitmap = this.readBitmap(stream);
+            bitmaps.push(bitmap);
+        }
+
+        return {
+            header,
+            bitmapTable,
+            bitmaps
+        };
+    }
+
+    static readBitmap(stream) {
+        const bitmap = {
+            width: stream.readUint16(),
+            height: stream.readUint16(),
+            flags: stream.readUint16(),
+            hotx: stream.readInt16(),
+            hoty: stream.readInt16(),
+            transparent: stream.readUint16(),
+            compression: stream.readUint16(),
+            bytewidth: stream.readUint16(),
+            bpp: stream.readUint16(),
+            palette: null,
+            data: null
+        };
+
+        // Sanity check
+        if (bitmap.width > 8192 || bitmap.height > 8192) {
+            throw new Error('Corrupted bitmap dimensions');
+        }
+
+        // Read palette if 8-bit
+        if (bitmap.flags & 0x0001) { // BM_8BIT
+            bitmap.palette = new Array(256);
+            for (let i = 0; i < 256; i++) {
+                bitmap.palette[i] = {
+                    r: stream.readUint8(),
+                    g: stream.readUint8(),
+                    b: stream.readUint8(),
+                    a: stream.readUint8()
+                };
+            }
+        }
+
+        // Calculate data size and read bitmap data
+        let dataSize;
+        if (bitmap.flags & 0x0001) { // 8-bit
+            dataSize = bitmap.width * bitmap.height;
+        } else if (bitmap.flags & 0x0002) { // 15-bit
+            dataSize = bitmap.width * bitmap.height * 2;
+        } else { // 16-bit
+            dataSize = bitmap.width * bitmap.height * 2;
+        }
+
+        // Read raw bitmap data
+        bitmap.data = new Uint8Array(arrayBuffer, stream.getPos(), dataSize);
+        
+        // Convert 15-bit to 16-bit if necessary
+        if (bitmap.flags & 0x0002) { // BM_15BIT
+            this.convert15to16(bitmap);
+        }
+
+        // Convert palette from 15-bit to 16-bit if necessary
+        if (bitmap.flags & 0x0001 && bitmap.flags & 0x0002) { // BM_8BIT && BM_15BIT
+            this.convertPal15to16(bitmap);
+        }
+
+        return bitmap;
+    }
+
+    static convert15to16(bitmap) {
+        // Convert 15-bit color to 16-bit color
+        const data = new Uint16Array(bitmap.data.buffer);
+        for (let i = 0; i < data.length; i++) {
+            const color15 = data[i];
+            const r = (color15 & 0x7C00) >> 10;
+            const g = (color15 & 0x03E0) >> 5;
+            const b = color15 & 0x001F;
+            data[i] = (r << 11) | (g << 6) | b;
+        }
+        bitmap.flags &= ~0x0002; // Clear BM_15BIT flag
+    }
+
+    static convertPal15to16(bitmap) {
+        // Convert palette entries from 15-bit to 16-bit color
+        for (let i = 0; i < bitmap.palette.length; i++) {
+            const color15 = bitmap.palette[i];
+            const r = (color15.r & 0x7C00) >> 10;
+            const g = (color15.g & 0x03E0) >> 5;
+            const b = color15.b & 0x001F;
+            bitmap.palette[i] = {
+                r: (r << 11),
+                g: (g << 6),
+                b: b,
+                a: color15.a
+            };
+        }
+    }
+
+    // Helper function to convert bitmap to canvas
+    static bitmapToCanvas(bitmap) {
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.createImageData(bitmap.width, bitmap.height);
+
+        if (bitmap.flags & 0x0001) { // 8-bit palettized
+            for (let i = 0; i < bitmap.data.length; i++) {
+                const paletteIndex = bitmap.data[i];
+                const color = bitmap.palette[paletteIndex];
+                imageData.data[i * 4] = color.r;
+                imageData.data[i * 4 + 1] = color.g;
+                imageData.data[i * 4 + 2] = color.b;
+                imageData.data[i * 4 + 3] = color.a;
+            }
+        } else { // 16-bit
+            const data = new Uint16Array(bitmap.data.buffer);
+            for (let i = 0; i < data.length; i++) {
+                const color = data[i];
+                const r = ((color & 0xF800) >> 11) << 3;
+                const g = ((color & 0x07E0) >> 5) << 2;
+                const b = (color & 0x001F) << 3;
+                imageData.data[i * 4] = r;
+                imageData.data[i * 4 + 1] = g;
+                imageData.data[i * 4 + 2] = b;
+                imageData.data[i * 4 + 3] = 255;
+            }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        return canvas;
+    }
+}
+
 class ClassDefParser {
     static async loadFile(filePath) {
         try {
