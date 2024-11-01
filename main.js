@@ -115,45 +115,59 @@ class CGSResourceParser {
             }
         }
 
-        // Read bitmaps
+        // Read the entire resource data first, like the C++ code does
+        const resourceData = new Uint8Array(arrayBuffer, stream.getPos(), header.datasize);
+
+        // Create the final result buffer
+        const resultBuffer = new Uint8Array(header.objsize);
+        resultBuffer.set(resourceData);
+
+        // Read bitmaps using offsets into the resultBuffer
         const bitmaps = [];
         for (const offset of bitmapTable) {
-            stream.setPos(offset);
-            const bitmap = this.readBitmap(stream, arrayBuffer); // Pass arrayBuffer here
+            // Create a new stream starting at the bitmap offset in the result buffer
+            const bitmapStream = new InputStream(resultBuffer.buffer);
+            bitmapStream.setPos(offset);
+            const bitmap = this.readBitmap(bitmapStream, resultBuffer.buffer);
             bitmaps.push(bitmap);
         }
 
         return {
             header,
             bitmapTable,
-            bitmaps
+            bitmaps,
+            data: resultBuffer
         };
+
     }
 
     static readBitmap(stream, arrayBuffer) {
-        // First read TBitmapData structure fields
+        // Match exact TBitmapData structure from bitmapdata.h
         const bitmap = {
-            // Core TBitmapData fields
-            width: stream.readInt16(),      // int width
-            height: stream.readInt16(),     // int height
-            regx: stream.readInt16(),       // int regx (registration point x)
-            regy: stream.readInt16(),       // int regy (registration point y)
-            flags: stream.readUint32(),     // DWORD flags
-            drawmode: stream.readUint32(),  // DWORD drawmode
-            keycolor: stream.readUint32(),  // DWORD keycolor
-            aliassize: stream.readUint32(), // DWORD aliassize
-            alias: stream.readUint32(),     // OFFSET alias
-            alphasize: stream.readUint32(), // DWORD alphasize
-            alpha: stream.readUint32(),     // OFFSET alpha
-            zbuffersize: stream.readUint32(), // DWORD zbuffersize
-            zbuffer: stream.readUint32(),   // OFFSET zbuffer
+            width: stream.readInt16(),       // int width
+            height: stream.readInt16(),      // int height
+            regx: stream.readInt16(),        // int regx (registration point x)
+            regy: stream.readInt16(),        // int regy (registration point y)
+            flags: stream.readUint32(),      // DWORD flags
+            drawmode: stream.readUint32(),   // DWORD drawmode (default drawing mode)
+            keycolor: stream.readUint32(),   // DWORD keycolor (transparent color)
+            aliassize: stream.readUint32(),  // DWORD aliassize
+            alias: stream.readUint32(),      // OFFSET alias (relative offset to alias data)
+            alphasize: stream.readUint32(),  // DWORD alphasize
+            alpha: stream.readUint32(),      // OFFSET alpha
+            zbuffersize: stream.readUint32(),// DWORD zbuffersize
+            zbuffer: stream.readUint32(),    // OFFSET zbuffer
             normalsize: stream.readUint32(), // DWORD normalsize
-            normal: stream.readUint32(),    // OFFSET normal
-            palettesize: stream.readUint32(), // DWORD palettesize
-            palette: null,                  // Will be filled if BM_8BIT flag is set
-            datasize: stream.readUint32(),  // DWORD datasize
-            data: null                      // Will be filled with bitmap data
+            normal: stream.readUint32(),     // OFFSET normal
+            palettesize: stream.readUint32(),// DWORD palettesize
+            palette: null,                   // Will hold SPalette structure if BM_8BIT
+            datasize: stream.readUint32(),   // DWORD datasize
+            data: null                       // Will hold actual bitmap data
         };
+
+        // Bitmap flags from the original code
+        const BM_8BIT = 0x0001;
+        const BM_15BIT = 0x0002;
 
         // Sanity check matching the C++ code
         if (bitmap.width > 8192 || bitmap.height > 8192) {
@@ -161,24 +175,23 @@ class CGSResourceParser {
         }
 
         // Read palette if 8-bit (BM_8BIT flag)
-        if (bitmap.flags & 0x0001) { // BM_8BIT
+        if (bitmap.flags & BM_8BIT) {
+            // Match SPalette structure from the C++ code
             bitmap.palette = new Array(256);
             for (let i = 0; i < 256; i++) {
                 bitmap.palette[i] = {
-                    colors: stream.readUint16(),     // WORD colors[256]
-                    rgbcolors: stream.readUint32()   // DWORD rgbcolors[256]
+                    color: stream.readUint16(),    // WORD colors[256]
+                    rgbcolor: stream.readUint32()  // DWORD rgbcolors[256]
                 };
             }
         }
 
         // Calculate data size based on bitmap format
         let dataSize;
-        if (bitmap.flags & 0x0001) { // 8-bit
-            dataSize = bitmap.width * bitmap.height;
-        } else if (bitmap.flags & 0x0002) { // 15-bit
-            dataSize = bitmap.width * bitmap.height * 2;
-        } else { // 16-bit
-            dataSize = bitmap.width * bitmap.height * 2;
+        if (bitmap.flags & BM_8BIT) {
+            dataSize = bitmap.width * bitmap.height;       // 8-bit = 1 byte per pixel
+        } else {
+            dataSize = bitmap.width * bitmap.height * 2;   // 15/16-bit = 2 bytes per pixel
         }
 
         // Read raw bitmap data
@@ -187,12 +200,12 @@ class CGSResourceParser {
         stream.skip(dataSize);
 
         // Convert 15-bit to 16-bit if necessary (matching C++ Convert15to16)
-        if (bitmap.flags & 0x0002) { // BM_15BIT
+        if (bitmap.flags & BM_15BIT) {
             this.convert15to16(bitmap);
         }
 
-        // Convert palette from 15-bit to 16-bit if necessary (matching C++ ConvertPal15to16)
-        if (bitmap.flags & 0x0001 && bitmap.flags & 0x0002) { // BM_8BIT && BM_15BIT
+        // Convert palette from 15-bit to 16-bit if necessary
+        if ((bitmap.flags & BM_8BIT) && (bitmap.flags & BM_15BIT)) {
             this.convertPal15to16(bitmap);
         }
 
