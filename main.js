@@ -102,7 +102,11 @@ class CGSResourceParser {
             throw new Error('Resource file version too old');
         }
 
-        // Skip header data if present
+        if (header.version > this.RESVERSION) {
+            throw new Error('Resource file version too new');
+        }
+
+        // Skip over header data if present (hdrsize + sizeof(FileResHdr))
         if (header.hdrsize > 0) {
             stream.skip(header.hdrsize);
         }
