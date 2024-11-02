@@ -136,46 +136,46 @@ class ImageryDatParser {
         const startPos = stream.getPos();
 
         const header = {
-            imageryId: stream.readInt32(),    // Id number for imagery handler
+            imageryId: stream.readInt32(),    // Id number for imagery handler (index to builder array)
             numStates: stream.readInt32(),    // Number of states
             states: []
         };
 
         // Read state headers
         for (let i = 0; i < header.numStates; i++) {
-            const state = {
-                animName: '',                 // Will be filled below
-                walkMap: stream.readUint32(), // Walkmap offset
-                flags: stream.readUint32(),   // Imagery state flags
-                aniFlags: stream.readInt16(), // Animation state flags
-                frames: stream.readInt16(),   // Number of frames
-                width: stream.readInt16(),    // Graphics maximum width
-                height: stream.readInt16(),   // Graphics maximum height
-                regX: stream.readInt16(),     // Registration point x
-                regY: stream.readInt16(),     // Registration point y
-                regZ: stream.readInt16(),     // Registration point z
-                animRegX: stream.readInt16(), // Animation registration x
-                animRegY: stream.readInt16(), // Animation registration y
-                animRegZ: stream.readInt16(), // Animation registration z
-                wRegX: stream.readInt16(),    // World registration x
-                wRegY: stream.readInt16(),    // World registration y
-                wRegZ: stream.readInt16(),    // World registration z
-                wWidth: stream.readInt16(),   // Object's world width
-                wLength: stream.readInt16(),  // Object's world length
-                wHeight: stream.readInt16(),  // Object's world height
-                invAniFlags: stream.readInt16(), // Animation flags for inventory
-                invFrames: stream.readInt16()    // Number of frames of inventory animation
-            };
-
-            // Read animation name (MAXANIMNAME = 32)
+            // Read animation name first (MAXANIMNAME = 32)
             const animNameBytes = new Uint8Array(arrayBuffer, stream.getPos(), 32);
             stream.skip(32);
 
-            // Convert to string until first null terminator
+            let animName = '';
             for (let j = 0; j < animNameBytes.length; j++) {
                 if (animNameBytes[j] === 0) break;
-                state.animName += String.fromCharCode(animNameBytes[j]);
+                animName += String.fromCharCode(animNameBytes[j]);
             }
+
+            const state = {
+                animName,                    // Array of Ascii Names
+                walkMap: stream.readUint32(), // Walkmap (OFFSET type)
+                flags: stream.readUint32(),   // Imagery state flags (DWORD)
+                aniFlags: stream.readInt16(), // Animation state flags (short)
+                frames: stream.readInt16(),   // Number of frames (short)
+                width: stream.readInt16(),    // Graphics maximum width (short)
+                height: stream.readInt16(),   // Graphics maximum height (short)
+                regX: stream.readInt16(),     // Registration point x for graphics (short)
+                regY: stream.readInt16(),     // Registration point y for graphics (short)
+                regZ: stream.readInt16(),     // Registration point z for graphics (short)
+                animRegX: stream.readInt16(), // Registration point of animation x (short)
+                animRegY: stream.readInt16(), // Registration point of animation y (short)
+                animRegZ: stream.readInt16(), // Registration point of animation z (short)
+                wRegX: stream.readInt16(),    // World registration x of walk and bounding box (short)
+                wRegY: stream.readInt16(),    // World registration y of walk and bounding box (short)
+                wRegZ: stream.readInt16(),    // World registration z of walk and bounding box (short)
+                wWidth: stream.readInt16(),   // Object's world width for walk map and bound box (short)
+                wLength: stream.readInt16(),  // Object's world length for walk map and bound box (short)
+                wHeight: stream.readInt16(),  // Object's world height for walk map and bound box (short)
+                invAniFlags: stream.readInt16(), // Animation flags for inventory animation (short)
+                invFrames: stream.readInt16()    // Number of frames of inventory animation (short)
+            };
 
             header.states.push(state);
         }
