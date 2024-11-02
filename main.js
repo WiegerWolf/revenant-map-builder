@@ -117,7 +117,7 @@ class ImageryDatParser {
             const headerSize = stream.readUint32();
 
             // Read imagery header
-            const imageryHeader = this.parseImageryHeader(stream, headerSize);
+            const imageryHeader = this.parseImageryHeader(stream, headerSize, arrayBuffer);
 
             entries.push({
                 filename,
@@ -132,7 +132,7 @@ class ImageryDatParser {
         };
     }
 
-    static parseImageryHeader(stream, headerSize) {
+    static parseImageryHeader(stream, headerSize, arrayBuffer) {
         const startPos = stream.getPos();
 
         const header = {
