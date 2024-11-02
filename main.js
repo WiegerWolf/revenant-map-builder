@@ -979,6 +979,7 @@ class DatParser {
             typeInfo.resourcePromise = this.loadResourceFile(this.gameDir, typeInfo.model);
         }
 
+        // stop here
         const data = this.readObjectData(stream, objClass, blockSize);
 
         return {
@@ -1192,7 +1193,9 @@ async function main() {
         for (const datFile of datFiles) {
             const filePath = path.join(mapDir, datFile);
             console.log(`Processing ${datFile}...`);
-
+            if (datFile.toLowerCase() === '41_22_9.dat') {
+                debugger;
+            }
             const result = await DatParser.loadFile(filePath, gameDir);
             if (result && result.numObjects) {
                 console.log(`File: ${datFile}`);
@@ -1204,6 +1207,7 @@ async function main() {
                     if (obj.typeInfo && obj.typeInfo.resourcePromise) {
                         const resource = await obj.typeInfo.resourcePromise;
                         // The debugger will break in loadResourceFile when resources are loaded
+                        debugger;
                     }
                 }
 
