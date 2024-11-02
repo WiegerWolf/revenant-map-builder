@@ -205,6 +205,7 @@ class CGSResourceParser {
             return CGSResourceParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading CGS resource file:', error);
+            debugger;
             return null;
         }
     }
@@ -423,6 +424,7 @@ class ClassDefParser {
             return ClassDefParser.parse(content);
         } catch (error) {
             console.error('Error loading class definition file:', error);
+            debugger;
             return null;
         }
     }
@@ -610,6 +612,7 @@ class DatParser {
             return DatParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading file:', error);
+            debugger;
             return null;
         }
     }
@@ -657,6 +660,7 @@ class DatParser {
             }
         } catch (error) {
             console.error('Error loading class definitions:', error);
+            debugger;
         }
     }
 
@@ -900,7 +904,7 @@ class DatParser {
         if (objVersion < 0) return null;  // Placeholder in map version 8 or above
 
         // Read object class
-        const objClass = stream.readInt16();
+        let objClass = stream.readInt16();
         if (objClass < 0) return null;    // Placeholder for empty object slot
 
         // Handle different version cases
@@ -1100,6 +1104,7 @@ class DatParser {
             return resource;
         } catch (error) {
             console.error(`Error loading resource file ${resourcePath}:`, error);
+            debugger;
             return null;
         }
     }
