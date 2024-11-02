@@ -57,6 +57,139 @@ class InputStream {
     }
 }
 
+class ImageryDatParser {
+    static QUICKLOAD_FILE_ID = ('H'.charCodeAt(0)) |
+        ('D'.charCodeAt(0) << 8) |
+        ('R'.charCodeAt(0) << 16) |
+        ('S'.charCodeAt(0) << 24);
+    static QUICKLOAD_FILE_VERSION = 1;
+    static MAX_IMAGERY_FILENAME_LENGTH = 128; // MAXIMFNAMELEN
+
+    static async loadFile(filePath) {
+        try {
+            const buffer = await fs.readFile(filePath);
+            const arrayBuffer = buffer.buffer.slice(
+                buffer.byteOffset,
+                buffer.byteOffset + buffer.byteLength
+            );
+            return ImageryDatParser.parse(arrayBuffer);
+        } catch (error) {
+            console.error('Error loading IMAGERY.DAT file:', error);
+            debugger;
+            return null;
+        }
+    }
+
+    static parse(arrayBuffer) {
+        const stream = new InputStream(arrayBuffer);
+
+        // Read QuickLoad Header
+        const header = {
+            id: stream.readUint32(),
+            version: stream.readUint32(),
+            numHeaders: stream.readUint32()
+        };
+
+        // Validate header
+        if (header.id !== this.QUICKLOAD_FILE_ID) {
+            throw new Error('Invalid IMAGERY.DAT file ID');
+        }
+
+        if (header.version !== this.QUICKLOAD_FILE_VERSION) {
+            throw new Error('Unsupported IMAGERY.DAT version');
+        }
+
+        // Read imagery entries
+        const entries = [];
+        for (let i = 0; i < header.numHeaders; i++) {
+            // Read filename (fixed-length buffer)
+            const filenameBytes = new Uint8Array(arrayBuffer, stream.getPos(), this.MAX_IMAGERY_FILENAME_LENGTH);
+            stream.skip(this.MAX_IMAGERY_FILENAME_LENGTH);
+
+            // Convert to string until first null terminator
+            let filename = '';
+            for (let j = 0; j < filenameBytes.length; j++) {
+                if (filenameBytes[j] === 0) break;
+                filename += String.fromCharCode(filenameBytes[j]);
+            }
+
+            // Read header size
+            const headerSize = stream.readUint32();
+
+            // Read imagery header
+            const imageryHeader = this.parseImageryHeader(stream, headerSize);
+
+            entries.push({
+                filename,
+                headerSize,
+                header: imageryHeader
+            });
+        }
+
+        return {
+            header,
+            entries
+        };
+    }
+
+    static parseImageryHeader(stream, headerSize) {
+        const startPos = stream.getPos();
+
+        const header = {
+            imageryId: stream.readInt32(),    // Id number for imagery handler
+            numStates: stream.readInt32(),    // Number of states
+            states: []
+        };
+
+        // Read state headers
+        for (let i = 0; i < header.numStates; i++) {
+            const state = {
+                animName: '',                 // Will be filled below
+                walkMap: stream.readUint32(), // Walkmap offset
+                flags: stream.readUint32(),   // Imagery state flags
+                aniFlags: stream.readInt16(), // Animation state flags
+                frames: stream.readInt16(),   // Number of frames
+                width: stream.readInt16(),    // Graphics maximum width
+                height: stream.readInt16(),   // Graphics maximum height
+                regX: stream.readInt16(),     // Registration point x
+                regY: stream.readInt16(),     // Registration point y
+                regZ: stream.readInt16(),     // Registration point z
+                animRegX: stream.readInt16(), // Animation registration x
+                animRegY: stream.readInt16(), // Animation registration y
+                animRegZ: stream.readInt16(), // Animation registration z
+                wRegX: stream.readInt16(),    // World registration x
+                wRegY: stream.readInt16(),    // World registration y
+                wRegZ: stream.readInt16(),    // World registration z
+                wWidth: stream.readInt16(),   // Object's world width
+                wLength: stream.readInt16(),  // Object's world length
+                wHeight: stream.readInt16(),  // Object's world height
+                invAniFlags: stream.readInt16(), // Animation flags for inventory
+                invFrames: stream.readInt16()    // Number of frames of inventory animation
+            };
+
+            // Read animation name (MAXANIMNAME = 32)
+            const animNameBytes = new Uint8Array(arrayBuffer, stream.getPos(), 32);
+            stream.skip(32);
+
+            // Convert to string until first null terminator
+            for (let j = 0; j < animNameBytes.length; j++) {
+                if (animNameBytes[j] === 0) break;
+                state.animName += String.fromCharCode(animNameBytes[j]);
+            }
+
+            header.states.push(state);
+        }
+
+        // Ensure we've read exactly headerSize bytes
+        const bytesRead = stream.getPos() - startPos;
+        if (bytesRead < headerSize) {
+            stream.skip(headerSize - bytesRead);
+        }
+
+        return header;
+    }
+}
+
 class CGSResourceParser {
     static RESMAGIC = 0x52534743; // 'CGSR' in little-endian
     static RESVERSION = 1;
@@ -1032,7 +1165,15 @@ async function main() {
     const resourcesDir = path.join(gameDir, 'Resources');
 
     try {
-        // Build the file cache first
+        // Load IMAGERY.DAT first
+        console.log('Loading IMAGERY.DAT...');
+        const imageryDatPath = path.join(resourcesDir, 'imagery.dat');
+        const imageryData = await ImageryDatParser.loadFile(imageryDatPath);
+        if (imageryData) {
+            console.log(`Loaded ${imageryData.entries.length} imagery entries`);
+        }
+
+        // Build the file cache
         console.log('Building file cache...');
         await DatParser.buildFileCache(resourcesDir);
 
