@@ -63,7 +63,8 @@ class ImageryDatParser {
         ('R'.charCodeAt(0) << 16) |
         ('S'.charCodeAt(0) << 24);
     static QUICKLOAD_FILE_VERSION = 1;
-    static MAX_IMAGERY_FILENAME_LENGTH = 128; // MAXIMFNAMELEN
+    static MAX_IMAGERY_FILENAME_LENGTH = 80; // MAXIMFNAMELEN
+    static MAXANIMNAME = 32;
 
     static async loadFile(filePath) {
         try {
@@ -143,9 +144,9 @@ class ImageryDatParser {
 
         // Read state headers
         for (let i = 0; i < header.numStates; i++) {
-            // Read animation name first (MAXANIMNAME = 32)
-            const animNameBytes = new Uint8Array(arrayBuffer, stream.getPos(), 32);
-            stream.skip(32);
+            // Read animation name first
+            const animNameBytes = new Uint8Array(arrayBuffer, stream.getPos(), this.MAXANIMNAME);
+            stream.skip(this.MAXANIMNAME);
 
             let animName = '';
             for (let j = 0; j < animNameBytes.length; j++) {
