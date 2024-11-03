@@ -1220,12 +1220,15 @@ class DatParser {
                 return this.loadContainerData(stream, version, objVersion);
             case 'complexobject':
                 return this.loadComplexObjectData(stream, version, objVersion);
+            case 'character':
+                return this.loadCharacterData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
                 return {};
         }
     }
+
     static loadCharacterData(stream, version, objVersion) {
         let baseData;
         
@@ -1256,14 +1259,14 @@ class DatParser {
         }
     
         // Load teleport data (version 2+)
-        let teleportPosition = { x: -1, y: -1, z: -1 };
+        let teleportPosition = new S3DPoint(-1, -1, -1);
         let teleportLevel = -1;
         if (objVersion >= 2) {
-            teleportPosition = {
-                x: stream.readInt32(),
-                y: stream.readInt32(),
-                z: stream.readInt32()
-            };
+            teleportPosition = new S3DPoint(
+                stream.readInt32(),  // x
+                stream.readInt32(),  // y
+                stream.readInt32()   // z
+            );
             teleportLevel = stream.readInt32();
         }
     
@@ -1275,20 +1278,9 @@ class DatParser {
             lastmanarecov,
             lastpoisondamage,
             teleportPosition,
-            teleportLevel,
-            
-            // Add helper methods if needed
-            isEnemy: (otherChar) => {
-                // Implementation of IsEnemy logic
-                return false; // placeholder
-            },
-            
-            isDead: () => {
-                // Implementation of IsDead logic
-                return baseData.stats?.find(s => s.name === "Health")?.value <= 0;
-            }
+            teleportLevel
         };
-    }
+    }    
     
     static loadComplexObjectData(stream, version, objVersion) {
         let baseData;
