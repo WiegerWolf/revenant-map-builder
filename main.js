@@ -1211,15 +1211,56 @@ class DatParser {
     }
 
     static loadObjectData(stream, version, objVersion, typeInfo, objClassName) {
-        switch (objClassName) {
+        switch (objClassName.toLowerCase()) {
             case 'tile':
-                // todo
-                return this.loadBaseObjectData(stream, version, objVersion);
+                return this.loadTileData(stream, version, objVersion);
+            case 'exit':
+                return this.loadExitData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
                 return {};
         }
+    }
+    
+    static loadTileData(stream, version, objVersion) {
+        return this.loadBaseObjectData(stream, version, objVersion);
+    }
+    
+    static loadContainerData(stream, version, objVersion) {
+        // Load base object data first
+        const baseData = this.loadBaseObjectData(stream, version, objVersion);
+        
+        // Handle container-specific data for versions 2-4
+        if (version >= 2 && version < 5) {
+            const contflags = stream.readInt32();
+            const pickdifficulty = stream.readInt32();
+            
+            baseData.stats = baseData.stats || [];
+            baseData.stats.push(
+                { name: "Locked", value: contflags !== 0 },
+                { name: "PickDifficulty", value: pickdifficulty }
+            );
+        }
+    
+        return baseData;
+    }
+    
+    static loadExitData(stream, version, objVersion) {
+        // Load container data first (which includes base object data)
+        const containerData = this.loadContainerData(stream, version, objVersion);
+        
+        // Load TExit specific data
+        const exitflags = stream.readUint32();
+        
+        return {
+            ...containerData,
+            exitflags,
+            className: 'exit',
+            isOn: () => !!(exitflags & ExitFlags.EX_ON),
+            isActivated: () => !!(exitflags & ExitFlags.EX_ACTIVATED),
+            isFromExit: () => !!(exitflags & ExitFlags.EX_FROMEXIT)
+        };
     }
 
     static loadInventory(stream, version) {
@@ -1266,6 +1307,33 @@ class DatParser {
     static hasNonMapFlag(objectData) {
         // Implement flag checking logic here
         return false;
+    }
+}
+
+// Exit states
+const ExitStates = {
+    EXIT_CLOSED: 0,
+    EXIT_OPEN: 1,
+    EXIT_CLOSING: 2,
+    EXIT_OPENING: 3
+};
+
+// Exit flags
+const ExitFlags = {
+    EX_ON: 1 << 0,        // player is on exit strip
+    EX_ACTIVATED: 1 << 1,  // exit has been activated
+    EX_FROMEXIT: 1 << 2   // player just came from another exit.. don't do anything
+};
+
+class ExitRef {
+    constructor() {
+        this.name = '';           // name of exit
+        this.target = null;       // position on level (S3DPoint)
+        this.level = 0;          // level to change to
+        this.mapindex = 0;       // object character is transfered to (usually another exit)
+        this.ambient = 0;        // level of ambient light
+        this.ambcolor = null;    // color of ambient light (SColor)
+        this.next = null;        // next in list
     }
 }
 
