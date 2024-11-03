@@ -1394,7 +1394,13 @@ class DatParser {
         // Load each inventory object
         for (let i = 0; i < num; i++) {
             try {
-                const inst = this.loadObject(stream, version);
+                // the code below is commented out because it's not working properly
+                // it supposed to load objects into inventory recursevely, but it's not working
+                // when we attempt to read inventory from the dat map file for an object like a
+                // chatacter, it starts to read garbage. I coulnd't figure out why or find where
+                // the problem is.
+                // Anyways, for the purpose of building a map inventory is not needed anyways.
+                // const inst = this.loadObject(stream, version);
                 if (inst) {
                     // In the C++ version, inst->SetOwner(this) is called
                     // We might need to implement something similar depending on our needs
