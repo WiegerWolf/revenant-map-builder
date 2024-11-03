@@ -1226,7 +1226,70 @@ class DatParser {
                 return {};
         }
     }
-
+    static loadCharacterData(stream, version, objVersion) {
+        let baseData;
+        
+        // Load base complex object data based on version
+        if (objVersion >= 3) {
+            baseData = this.loadComplexObjectData(stream, version, objVersion);
+        } else {
+            baseData = this.loadComplexObjectData(stream, version, 0);
+        }
+    
+        // Early return for old versions
+        if (objVersion < 1) {
+            return {
+                ...baseData,
+                className: 'character'
+            };
+        }
+    
+        // Load recovery timestamps
+        const lasthealthrecov = stream.readInt32();
+        const lastfatiguerecov = stream.readInt32();
+        const lastmanarecov = stream.readInt32();
+    
+        // Load poison damage (version 4+)
+        let lastpoisondamage = -1;
+        if (objVersion >= 4) {
+            lastpoisondamage = stream.readInt32();
+        }
+    
+        // Load teleport data (version 2+)
+        let teleportPosition = { x: -1, y: -1, z: -1 };
+        let teleportLevel = -1;
+        if (objVersion >= 2) {
+            teleportPosition = {
+                x: stream.readInt32(),
+                y: stream.readInt32(),
+                z: stream.readInt32()
+            };
+            teleportLevel = stream.readInt32();
+        }
+    
+        return {
+            ...baseData,
+            className: 'character',
+            lasthealthrecov,
+            lastfatiguerecov,
+            lastmanarecov,
+            lastpoisondamage,
+            teleportPosition,
+            teleportLevel,
+            
+            // Add helper methods if needed
+            isEnemy: (otherChar) => {
+                // Implementation of IsEnemy logic
+                return false; // placeholder
+            },
+            
+            isDead: () => {
+                // Implementation of IsDead logic
+                return baseData.stats?.find(s => s.name === "Health")?.value <= 0;
+            }
+        };
+    }
+    
     static loadComplexObjectData(stream, version, objVersion) {
         let baseData;
 
