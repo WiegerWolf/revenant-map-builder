@@ -120,6 +120,10 @@ class ImageryDatParser {
             // Read imagery header
             const imageryHeader = this.parseImageryHeader(stream, headerSize, arrayBuffer);
 
+            // Read imagery body
+            const imageryBody = this.parseImageryBody(filename, imageryHeader);
+
+            // Add entry to the list
             entries.push({
                 filename,
                 headerSize,
@@ -188,6 +192,13 @@ class ImageryDatParser {
         }
 
         return header;
+    }
+
+    static parseImageryBody(filename, imageryHeader) {
+        // Placeholder for parsing imagery body based on filename and imageryHeader
+        // This will depend on the specific format of the imagery data
+        debugger;
+        return {};
     }
 }
 
@@ -1722,6 +1733,7 @@ async function main() {
         const imageryData = await ImageryDatParser.loadFile(imageryDatPath);
         if (imageryData) {
             console.log(`Loaded ${imageryData.entries.length} imagery entries`);
+            debugger;
         }
 
         // Build the file cache
