@@ -515,23 +515,26 @@ class ClassDefParser {
                     });
                 }
             } else if (currentSection === 'types') {
-                const match = line.match(/"([^"]+)"\s+"([^"]+)"\s+(0x[0-9a-fA-F]+)\s+{([^}]+)}\s*{([^}]*)}/)
+                // Modified regex to make the stats values optional
+                const match = line.match(/"([^"]+)"\s+"([^"]+)"\s+(0x[0-9a-fA-F]+)(?:\s+{([^}]*)})?(?:\s+{([^}]*)})?/);
                 if (match) {
-                    const values = match[4].split(',').map(v => parseInt(v.trim()));
+                    const values = match[4] ? match[4].split(',').map(v => parseInt(v.trim())) : [];
                     const extra = match[5] ? match[5].split(',').map(v => v.trim()) : [];
 
-                    // Create mapped stats object
+                    // Create mapped stats object only if stats exist
                     const mappedStats = {};
-                    currentClass.stats.forEach((stat, index) => {
-                        if (index < values.length) {
-                            mappedStats[stat.name] = {
-                                value: values[index],
-                                ...stat
-                            };
-                        }
-                    });
+                    if (currentClass.stats.length > 0) {
+                        currentClass.stats.forEach((stat, index) => {
+                            if (index < values.length) {
+                                mappedStats[stat.name] = {
+                                    value: values[index],
+                                    ...stat
+                                };
+                            }
+                        });
+                    }
 
-                    // Create mapped objStats object if they exist
+                    // Create mapped objStats object only if objStats exist
                     const mappedObjStats = {};
                     if (currentClass.objStats.length > 0 && extra.length > 0) {
                         currentClass.objStats.forEach((stat, index) => {
@@ -548,8 +551,8 @@ class ClassDefParser {
                         name: match[1],
                         model: match[2],
                         id: parseInt(match[3], 16),
-                        stats: mappedStats,
-                        objStats: mappedObjStats
+                        ...(Object.keys(mappedStats).length > 0 && { stats: mappedStats }),
+                        ...(Object.keys(mappedObjStats).length > 0 && { objStats: mappedObjStats })
                     });
                 }
             }
@@ -1226,6 +1229,8 @@ class DatParser {
                 return this.loadItemData(stream, version, objVersion);
             case 'effect':
                 return this.loadEffectData(stream, version, objVersion);
+            case 'helper':
+                return this.loadHelperData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
@@ -1233,8 +1238,11 @@ class DatParser {
         }
     }
 
+    static loadHelperData(stream, version, objVersion) {
+        return this.loadBaseObjectData(stream, version, objVersion);
+    }
+
     static loadEffectData(stream, version, objVersion) {
-        debugger;
         return this.loadBaseObjectData(stream, version, objVersion);
     }
 
@@ -1391,7 +1399,6 @@ class DatParser {
         // Sanity check for inventory size
         if (num > 2048) {
             console.warn("Invalid inventory size:", num);
-            debugger;
             return [];
         }
 
