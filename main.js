@@ -1224,11 +1224,18 @@ class DatParser {
                 return this.loadCharacterData(stream, version, objVersion);
             case 'item':
                 return this.loadItemData(stream, version, objVersion);
+            case 'effect':
+                return this.loadEffectData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
                 return {};
         }
+    }
+
+    static loadEffectData(stream, version, objVersion) {
+        debugger;
+        return this.loadBaseObjectData(stream, version, objVersion);
     }
 
     static loadCharacterData(stream, version, objVersion) {
@@ -1401,6 +1408,8 @@ class DatParser {
                 // the problem is.
                 // Anyways, for the purpose of building a map inventory is not needed anyways.
                 // const inst = this.loadObject(stream, version);
+                console.log("Skipping loading inventory object " + i);
+                continue;
                 if (inst) {
                     // In the C++ version, inst->SetOwner(this) is called
                     // We might need to implement something similar depending on our needs
