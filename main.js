@@ -1229,64 +1229,74 @@ class DatParser {
 
     static loadComplexObjectData(stream, version, objVersion) {
         let baseData;
-        
+
         // Load base object data based on version
         if (objVersion >= 1) {
             baseData = this.loadBaseObjectData(stream, version, objVersion);
         } else {
             baseData = this.loadBaseObjectData(stream, version, 0);
         }
-    
+
         // Load root state
         let actionBlock;
         if (version < 7) {
             actionBlock = new ActionBlock("still"); // DefaultRootState
         } else {
             const action = stream.readUint8();
-            const name = stream.readString(); // Assuming readString reads RESNAMELEN chars
+
+            // Read fixed-length name (RESNAMELEN)
+            const nameBytes = new Uint8Array(stream.dataView.buffer, stream.dataView.byteOffset + stream.offset, RESNAMELEN);
+            stream.skip(RESNAMELEN);
+
+            let name = '';
+            for (let i = 0; i < nameBytes.length; i++) {
+                if (nameBytes[i] === 0) break;
+                name += String.fromCharCode(nameBytes[i]);
+            }
+
             actionBlock = new ActionBlock(name, action);
         }
-    
+
         return {
             ...baseData,
             className: 'complexobject',
-            root: actionBlock,    // root state
-            doing: actionBlock,   // current state
-            desired: actionBlock, // desired state
-            state: -1            // FindState would return index of state, defaulting to -1
+            root: actionBlock,
+            doing: actionBlock,
+            desired: actionBlock,
+            state: -1
         };
     }
-    
+
     static loadTileData(stream, version, objVersion) {
         return this.loadBaseObjectData(stream, version, objVersion);
     }
-    
+
     static loadContainerData(stream, version, objVersion) {
         // Load base object data first
         const baseData = this.loadBaseObjectData(stream, version, objVersion);
-        
+
         // Handle container-specific data for versions 2-4
         if (version >= 2 && version < 5) {
             const contflags = stream.readInt32();
             const pickdifficulty = stream.readInt32();
-            
+
             baseData.stats = baseData.stats || [];
             baseData.stats.push(
                 { name: "Locked", value: contflags !== 0 },
                 { name: "PickDifficulty", value: pickdifficulty }
             );
         }
-    
+
         return baseData;
     }
-    
+
     static loadExitData(stream, version, objVersion) {
         // Load container data first (which includes base object data)
         const containerData = this.loadContainerData(stream, version, objVersion);
-        
+
         // Load TExit specific data
         const exitflags = stream.readUint32();
-        
+
         return {
             ...containerData,
             exitflags,
@@ -1302,20 +1312,20 @@ class DatParser {
         if (version < 3) {
             return [];
         }
-    
+
         // Read number of inventory items
         const num = stream.readInt32();
-    
+
         // Sanity check for inventory size
         if (num > 2048) {
             console.warn("Invalid inventory size:", num);
             debugger;
             return [];
         }
-    
+
         // Array to store inventory items
         const inventory = [];
-    
+
         // Load each inventory object
         for (let i = 0; i < num; i++) {
             debugger; // code is not tested below. investigate if we ever end up here, espesially that recursive load object call
@@ -1334,10 +1344,10 @@ class DatParser {
                 // Continue loading other items even if one fails
             }
         }
-    
+
         return inventory;
     }
-    
+
     static hasNonMapFlag(objectData) {
         // Implement flag checking logic here
         return false;
