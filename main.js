@@ -636,12 +636,14 @@ class DatParser {
 
         // Load each object
         for (let i = 0; i < numObjects; i++) {
-            const obj = this.readObject(stream, version);
+            console.log(`Loading object ${i + 1} of ${numObjects}`);
+            const obj = this.loadObject(stream, version);
             if (obj) {
                 objects.push(obj);
             }
         }
 
+        if (numObjects) debugger;
         return {
             version,
             numObjects,
@@ -664,67 +666,74 @@ class DatParser {
         }
     }
 
-    static loadObject(stream, version, isMap) {
-        let uniqueId = 0;
+    static loadObject(stream, version, isMap = true) {
+        let uniqueId;
         let objVersion = 0;
         let objClass;
         let objType;
         let blockSize;
+        let def = {};
         let forcesimple = false;
         let corrupted = false;
-
-        // Load object block header
+    
+        // ****** Load object block header ******
+    
+        // Get object version
         if (version >= 8) {
             objVersion = stream.readInt16();
         }
-
-        if (objVersion < 0) {
+    
+        if (objVersion < 0) { // Objversion is the placeholder in map version 8 or above
             return null;
         }
-
+    
         objClass = stream.readInt16();
-        if (objClass < 0) {
+        if (objClass < 0) {   // Placeholder for empty object slot
             return null;
         }
-
-        // Handle different versions
+    
+        // Check the sector map version before we read the type info
         if (version < 1) {
-            // Version 0 - No Unique ID's
+            // Version 0 - No Unique ID's, so just read the objtype directly
             objType = stream.readInt16();
             uniqueId = 0;
             blockSize = -1;
-        } else if (version < 4) {
-            // Version 1-3 - Unique ID's used
+        }
+        else if (version < 4) {
+            // Version 1 and above - Unique ID's used instead of objtype
             objType = -1;
             uniqueId = stream.readUint32();
             blockSize = -1;
-        } else {
-            // Version 4+ has block size
+        }
+        else {
+            // Version 4 has block size
             objType = -1;
             uniqueId = stream.readUint32();
             blockSize = stream.readInt16();
         }
-
-        // Validate object class
-        const objectClass = this.getObjectClass(objClass);
-        if (!objectClass) {
-            if (blockSize >= 0) {
-                // Skip this object
-                stream.skip(blockSize);
+    
+        // ****** Is this object any good? ******
+        
+        const cl = this.getObjectClass(objClass);
+        if (!cl) {
+            if (this.Debug) {
+                throw new Error("Object in map file has invalid class - possible file corruption");
+            }
+            else if (blockSize >= 0) {
+                stream.skip(blockSize);  // Just quietly skip this object
                 return null;
-            } else {
-                // Try to fix it by assuming it's a tile
+            }
+            else {                      // Try to fix it by assuming its a tile
                 objClass = this.OBJCLASS_TILE;
                 corrupted = true;
             }
         }
-
-        // Handle object type resolution
+    
         if (objType < 0) {
             objType = this.findObjectType(uniqueId, objClass);
-
+    
             if (objType < 0) {
-                // Search all classes for the unique ID
+                // not found in this class, so check all of them
                 for (let newObjClass = 0; newObjClass < this.MAXOBJECTCLASSES; newObjClass++) {
                     const newType = this.findObjectType(uniqueId, newObjClass);
                     if (newType >= 0) {
@@ -735,44 +744,68 @@ class DatParser {
                     }
                 }
             }
-
-            if (objType < 0) {
-                if (blockSize >= 0) {
+    
+            if (objType < 0) {  // Still can't find type
+                if (this.Debug) {
+                    throw new Error(`Object unique id 0x${uniqueId.toString(16)} not found in class.def`);
+                }
+                else if (blockSize >= 0) {    // Just skip over this object
                     stream.skip(blockSize);
                     return null;
-                } else {
+                }
+                else {      // If attempting to fix, assume type is type 0
                     objType = 0;
                     corrupted = true;
                 }
             }
         }
-
-        // Record the start position for block size handling
-        const startPos = stream.offset;
-
+    
+        // ****** Create the object ******
+    
+        def.objClass = objClass;
+        def.objType = objType;
+    
+        // Get start of object
+        const startPos = stream.getPos();
+    
         // Load object data
-        const objectData = this.loadObjectData(stream, version, objVersion, forcesimple);
+        const objectData = forcesimple ? 
+            this.loadBaseObjectData(stream, version, objVersion) :  // Used if object changed class
+            this.loadObjectData(stream, version, objVersion);       // This should normally be used
+        
         const inventory = this.loadInventory(stream, version);
-
-        // Handle block size positioning
+    
+        // Reset position to start of next object
         if (blockSize >= 0) {
             stream.setPos(startPos + blockSize);
         }
-
-        // Skip corrupted objects
+    
+        // If this object is corrupted in some way, return null
         if (corrupted || (isMap && this.hasNonMapFlag(objectData))) {
             return null;
         }
-
+    
         return {
-            class: objClass,
-            type: objType,
             version: objVersion,
+            class: {
+                id: objClass,
+                name: this.OBJ_CLASSES[objClass] || 'unknown'
+            },
+            type: objType,
+            typeInfo: this.getTypeInfo(uniqueId, objClass),
             uniqueId,
+            blockSize,
             data: objectData,
             inventory
         };
     }
+
+    static loadBaseObjectData(stream, version, objVersion) {
+        // Implement basic object loading
+        return this.readBaseObjectData(stream);
+    }
+    
+    static Debug = false; // Add this class property
 
     static readBaseObjectData(stream) {
         return {
@@ -1207,7 +1240,7 @@ async function main() {
                     if (obj.typeInfo && obj.typeInfo.resourcePromise) {
                         const resource = await obj.typeInfo.resourcePromise;
                         // The debugger will break in loadResourceFile when resources are loaded
-                        debugger;
+                        // debugger;
                     }
                 }
 
