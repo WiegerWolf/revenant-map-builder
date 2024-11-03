@@ -935,9 +935,11 @@ class DatParser {
             lightDef.intensity = stream.readUint8();
             lightDef.multiplier = stream.readInt16();
 
-            // Set the light and animate flags
-            flags |= this.OF_LIGHT | this.OF_ANIMATE;
+            // Set the light and animate flags using our ObjectFlags properties
+            flags.of_light = true;
+            flags.of_animate = true;
         }
+
 
         return {
             name,
@@ -1221,10 +1223,46 @@ class DatParser {
     }
 
     static loadInventory(stream, version) {
-        // Implement inventory loading logic here
-        return [];
+        // Early return for versions < 3
+        if (version < 3) {
+            return [];
+        }
+    
+        // Read number of inventory items
+        const num = stream.readInt32();
+    
+        // Sanity check for inventory size
+        if (num > 2048) {
+            console.warn("Invalid inventory size:", num);
+            debugger;
+            return [];
+        }
+    
+        // Array to store inventory items
+        const inventory = [];
+    
+        // Load each inventory object
+        for (let i = 0; i < num; i++) {
+            debugger; // code is not tested below. investigate if we ever end up here, espesially that recursive load object call
+            try {
+                const inst = this.loadObject(stream, version);
+                if (inst) {
+                    // In the C++ version, inst->SetOwner(this) is called
+                    // We might need to implement something similar depending on our needs
+                    inst.owner = this; // or however we handle ownership
+                    inventory.push(inst);
+                } else {
+                    console.warn("Invalid inventory object loaded");
+                }
+            } catch (error) {
+                console.warn("Error loading inventory object:", error);
+                // Continue loading other items even if one fails
+            }
+        }
+    
+        return inventory;
     }
-
+    
     static hasNonMapFlag(objectData) {
         // Implement flag checking logic here
         return false;
