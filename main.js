@@ -1727,6 +1727,10 @@ async function main() {
     const resourcesDir = path.join(gameDir, 'Resources');
 
     try {
+        // Build the file cache
+        console.log('Building file cache...');
+        await DatParser.buildFileCache(resourcesDir);
+
         // Load IMAGERY.DAT first
         console.log('Loading IMAGERY.DAT...');
         const imageryDatPath = path.join(resourcesDir, 'imagery.dat');
@@ -1735,10 +1739,6 @@ async function main() {
             console.log(`Loaded ${imageryData.entries.length} imagery entries`);
             debugger;
         }
-
-        // Build the file cache
-        console.log('Building file cache...');
-        await DatParser.buildFileCache(resourcesDir);
 
         // Then proceed with the rest of the processing
         await DatParser.loadClassDefinitions(gameDir);
