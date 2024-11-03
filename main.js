@@ -1219,6 +1219,8 @@ class DatParser {
             case 'effect':
             case 'helper':
             case 'shadow':
+            case 'trap':
+            case 'food':
             case 'item':
                 return this.loadBaseObjectData(stream, version, objVersion);
             case 'exit':
@@ -1237,7 +1239,7 @@ class DatParser {
                 return {};
         }
     }
-    
+
     static loadScrollData(stream, version, objVersion) {
         // Load base object data first
         const baseData = this.loadBaseObjectData(stream, version, objVersion);
