@@ -643,7 +643,6 @@ class DatParser {
             }
         }
 
-        if (numObjects) debugger;
         return {
             version,
             numObjects,
@@ -801,8 +800,176 @@ class DatParser {
     }
 
     static loadBaseObjectData(stream, version, objVersion) {
-        // Implement basic object loading
-        return this.readBaseObjectData(stream);
+        // Read name (length-prefixed string)
+        const name = stream.readString();
+    
+        // Read flags and position
+        const newFlags = stream.readUint32();
+        const position = {
+            x: stream.readInt32(),
+            y: stream.readInt32(),
+            z: stream.readInt32()
+        };
+    
+        // Handle flags (you'll need to implement OF_FIXEDFLAGS constant)
+        const flags = (this.flags & this.OF_FIXEDFLAGS) | (newFlags & ~this.OF_FIXEDFLAGS);
+    
+        // Read velocity if mobile and version < 6
+        let velocity = { x: 0, y: 0, z: 0 };
+        if (version < 6 || !(flags & this.OF_IMMOBILE)) {
+            velocity = {
+                x: stream.readInt32(),
+                y: stream.readInt32(),
+                z: stream.readInt32()
+            };
+        }
+    
+        // Read state
+        let state;
+        if (version < 9) {
+            state = stream.readUint8();
+        } else {
+            state = stream.readUint16();
+        }
+    
+        // Handle level for non-map objects
+        let level = 0;
+        if (version >= 6 && (flags & this.OF_NONMAP)) {
+            if (version < 9) {
+                level = stream.readUint8();
+            } else {
+                level = stream.readUint16();
+            }
+        }
+    
+        // Handle health for old versions
+        let health;
+        if (version < 5) {
+            health = stream.readUint8();
+        }
+    
+        // Read inventory and rotation data
+        let inventNum, invIndex, shadow, rotateX, rotateY, rotateZ, mapIndex;
+        if (version < 3) {
+            const facing = stream.readUint8();
+            const dummy16 = stream.readInt16();
+            inventNum = stream.readInt16();
+            const dummy16_2 = stream.readInt16();
+            shadow = stream.readInt32();
+            const dummy8 = stream.readUint8();
+    
+            // ignore inventories in old version
+            inventNum = -1;
+            mapIndex = -1;
+        } else {
+            inventNum = stream.readInt16();
+            invIndex = stream.readInt16();
+            shadow = stream.readInt32();
+            rotateX = stream.readUint8();
+            rotateY = stream.readUint8();
+            rotateZ = stream.readUint8();
+            mapIndex = stream.readInt32();
+        }
+    
+        // Handle animation and stats
+        let frame = 0;
+        let frameRate = 1;
+        let group = 0;
+        let stats = [];
+    
+        if (version < 5) {
+            // Set up empty stat array and stick health in it
+            if (this.getNumObjStats() > 0) {
+                stats = new Array(this.getNumObjStats()).fill(0);
+                this.setHealth(health, stats);
+            }
+        } else {
+            if (version >= 6) {
+                if (flags & this.OF_ANIMATE) {
+                    frame = stream.readInt16();
+                    frameRate = stream.readInt16();
+                }
+            } else {
+                frame = stream.readInt16();
+                frameRate = stream.readInt16();
+            }
+    
+            group = stream.readUint8();
+    
+            // Read stats
+            const numStats = stream.readUint8();
+            if (numStats > 0) {
+                stats = [];
+                for (let st = 0; st < numStats; st++) {
+                    const stat = stream.readInt32();
+                    const uniqueId = stream.readUint32();
+                    stats.push({ stat, uniqueId });
+                }
+            }
+        }
+    
+        // Read light data if present
+        let lightDef = null;
+        if (flags & this.OF_LIGHT) {
+            lightDef = {
+                flags: stream.readUint32(),
+                pos: {
+                    x: stream.readInt32(),
+                    y: stream.readInt32(),
+                    z: stream.readInt32()
+                },
+                color: {
+                    red: stream.readUint8(),
+                    green: stream.readUint8(),
+                    blue: stream.readUint8()
+                },
+                intensity: stream.readInt32(),
+                multiplier: stream.readInt32()
+            };
+            flags |= this.OF_LIGHT | this.OF_ANIMATE;
+        }
+    
+        return {
+            name,
+            flags,
+            position,
+            velocity,
+            state,
+            level,
+            inventNum,
+            invIndex,
+            shadow,
+            rotation: {
+                x: rotateX,
+                y: rotateY,
+                z: rotateZ
+            },
+            mapIndex,
+            frame,
+            frameRate,
+            group,
+            stats,
+            lightDef
+        };
+    }
+    
+    // Add these constants and helper methods to the class
+    static OF_FIXEDFLAGS = 0; // Define appropriate value
+    static OF_IMMOBILE = 0x80000000;
+    static OF_NONMAP = 0x00001000;
+    static OF_ANIMATE = 0x00020000;
+    static OF_LIGHT = 0x20000000;
+    
+    static getNumObjStats() {
+        // Implement this method to return the number of object stats
+        return 0;
+    }
+    
+    static setHealth(health, stats) {
+        // Implement this method to set health in stats array
+        if (stats.length > 0) {
+            stats[0] = health;
+        }
     }
     
     static Debug = false; // Add this class property
@@ -923,112 +1090,6 @@ class DatParser {
         }
 
         return data;
-    }
-
-    static readObject(stream, version, isMap = true) {
-        let uniqueId = 0;
-        let objType = -1;
-        let blockSize = -1;
-        let forcesimple = false;
-        let corrupted = false;
-
-        // Get object version
-        let objVersion = version >= 8 ? stream.readInt16() : 0;
-        if (objVersion < 0) return null;  // Placeholder in map version 8 or above
-
-        // Read object class
-        let objClass = stream.readInt16();
-        if (objClass < 0) return null;    // Placeholder for empty object slot
-
-        // Handle different version cases
-        if (version < 1) {
-            // Version 0 - No Unique ID's, read objtype directly
-            objType = stream.readInt16();
-            uniqueId = 0;
-            blockSize = -1;
-        }
-        else if (version < 4) {
-            // Version 1-3 - Unique ID's used instead of objtype
-            objType = -1;
-            uniqueId = stream.readUint32();
-            blockSize = -1;
-        }
-        else {
-            // Version 4+ has block size
-            objType = -1;
-            uniqueId = stream.readUint32();
-            blockSize = stream.readInt16();
-        }
-
-        // Validate object class
-        const objectClass = this.getObjectClass(objClass);
-        if (!objectClass) {
-            if (blockSize >= 0) {
-                // Skip this object
-                stream.skip(blockSize);
-                return null;
-            } else {
-                // Try to fix it by assuming it's a tile
-                objClass = this.OBJCLASS_TILE;
-                corrupted = true;
-            }
-        }
-
-        // Handle object type resolution
-        if (objType < 0) {
-            objType = this.findObjectType(uniqueId, objClass);
-
-            if (objType < 0) {
-                // Search all classes for the unique ID
-                for (let newObjClass = 0; newObjClass < this.MAXOBJECTCLASSES; newObjClass++) {
-                    const newType = this.findObjectType(uniqueId, newObjClass);
-                    if (newType >= 0) {
-                        objClass = newObjClass;
-                        objType = newType;
-                        forcesimple = true;
-                        break;
-                    }
-                }
-            }
-
-            if (objType < 0) {
-                if (blockSize >= 0) {
-                    stream.skip(blockSize);
-                    return null;
-                } else {
-                    objType = 0;
-                    corrupted = true;
-                }
-            }
-        }
-
-
-        // After determining objClass and uniqueId
-        const typeInfo = this.getTypeInfo(uniqueId, objClass);
-
-        // If we have type info and it has a model path, load the resource
-        if (typeInfo && typeInfo.model) {
-            // Store the resource loading promise
-            typeInfo.resourcePromise = this.loadResourceFile(this.gameDir, typeInfo.model);
-        }
-
-        // stop here
-        const data = this.readObjectData(stream, objClass, blockSize);
-
-        return {
-            version: objVersion,
-            class: {
-                id: objClass,
-                name: this.OBJ_CLASSES[objClass] || 'unknown'
-            },
-            type: objType,
-            typeInfo,
-            uniqueId,
-            blockSize,
-            corrupted,
-            forcesimple,
-            data
-        };
     }
 
     static getObjectClass(classId) {
@@ -1226,9 +1287,6 @@ async function main() {
         for (const datFile of datFiles) {
             const filePath = path.join(mapDir, datFile);
             console.log(`Processing ${datFile}...`);
-            if (datFile.toLowerCase() === '41_22_9.dat') {
-                debugger;
-            }
             const result = await DatParser.loadFile(filePath, gameDir);
             if (result && result.numObjects) {
                 console.log(`File: ${datFile}`);
