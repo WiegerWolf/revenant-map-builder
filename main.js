@@ -1231,14 +1231,16 @@ class DatParser {
 
     static loadCharacterData(stream, version, objVersion) {
         let baseData;
-        
+
         // Load base complex object data based on version
         if (objVersion >= 3) {
-            baseData = this.loadComplexObjectData(stream, version, objVersion);
+            // Read complex object version byte first
+            const complexObjVersion = stream.readUint8();
+            baseData = this.loadComplexObjectData(stream, version, complexObjVersion);
         } else {
             baseData = this.loadComplexObjectData(stream, version, 0);
         }
-    
+
         // Early return for old versions
         if (objVersion < 1) {
             return {
@@ -1246,18 +1248,18 @@ class DatParser {
                 className: 'character'
             };
         }
-    
+
         // Load recovery timestamps
         const lasthealthrecov = stream.readInt32();
         const lastfatiguerecov = stream.readInt32();
         const lastmanarecov = stream.readInt32();
-    
+
         // Load poison damage (version 4+)
         let lastpoisondamage = -1;
         if (objVersion >= 4) {
             lastpoisondamage = stream.readInt32();
         }
-    
+
         // Load teleport data (version 2+)
         let teleportPosition = new S3DPoint(-1, -1, -1);
         let teleportLevel = -1;
@@ -1269,7 +1271,7 @@ class DatParser {
             );
             teleportLevel = stream.readInt32();
         }
-    
+
         return {
             ...baseData,
             className: 'character',
@@ -1280,14 +1282,16 @@ class DatParser {
             teleportPosition,
             teleportLevel
         };
-    }    
-    
+    }
+
     static loadComplexObjectData(stream, version, objVersion) {
         let baseData;
 
         // Load base object data based on version
         if (objVersion >= 1) {
-            baseData = this.loadBaseObjectData(stream, version, objVersion);
+            // Read base class version byte first
+            const baseObjVersion = stream.readUint8();
+            baseData = this.loadBaseObjectData(stream, version, baseObjVersion);
         } else {
             baseData = this.loadBaseObjectData(stream, version, 0);
         }
