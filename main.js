@@ -1757,11 +1757,7 @@ async function main() {
 
                 // Process each object's resource
                 for (const obj of result.objects) {
-                    if (obj.typeInfo && obj.typeInfo.resourcePromise) {
-                        const resource = await obj.typeInfo.resourcePromise;
-                        // The debugger will break in loadResourceFile when resources are loaded
-                        // debugger;
-                    }
+                    // todo
                 }
 
                 console.log('-------------------');
