@@ -596,6 +596,52 @@ class DatParser {
     static MAXOBJECTCLASSES = 64;
     static OBJCLASS_TILE = 9;
 
+    // Object Flags
+    static OF_IMMOBILE = 1 << 0;      // Not affected by gravity etc
+    static OF_EDITORLOCK = 1 << 1;    // Object is locked down (can't move in editor)
+    static OF_LIGHT = 1 << 2;         // Object generates light
+    static OF_MOVING = 1 << 3;        // Object is a moving object
+    static OF_ANIMATING = 1 << 4;     // Has animating imagery
+    static OF_AI = 1 << 5;            // Object has A.I.
+    static OF_DISABLED = 1 << 6;      // Object A.I. is disabled
+    static OF_INVISIBLE = 1 << 7;     // Not visible in map pane during normal play
+    static OF_EDITOR = 1 << 8;        // Is editor only object
+    static OF_DRAWFLIP = 1 << 9;      // Reverse on the horizontal
+    static OF_SELDRAW = 1 << 10;      // Editor is manipulating object
+    static OF_REVEAL = 1 << 11;       // Player needs to see behind object
+    static OF_KILL = 1 << 12;         // Suicidal
+    static OF_GENERATED = 1 << 13;    // Created by map generator
+    static OF_ANIMATE = 1 << 14;      // Call Animate() func AND create animators
+    static OF_PULSE = 1 << 15;        // Call the object Pulse() function
+    static OF_WEIGHTLESS = 1 << 16;   // Can move, but not affected by gravity
+    static OF_COMPLEX = 1 << 17;      // Object is a complex object
+    static OF_NOTIFY = 1 << 18;       // Notify object of a system change
+    static OF_NONMAP = 1 << 19;       // Not managed by map system
+    static OF_ONEXIT = 1 << 20;       // Object is currently on an exit
+    static OF_PAUSE = 1 << 21;        // Script is paused
+    static OF_NOWALK = 1 << 22;       // Don't use walk map for this tile
+    static OF_PARALIZE = 1 << 23;     // Freeze object in mid-animation
+    static OF_NOCOLLISION = 1 << 24;  // Let object go through boundaries
+    static OF_ICED = 1 << 25;         // Used for iced effect
+
+    // Fixed flags that shouldn't be changed
+    static OF_FIXEDFLAGS = 
+        this.OF_COMPLEX | 
+        this.OF_NOTIFY | 
+        this.OF_NONMAP | 
+        this.OF_AI | 
+        this.OF_MOVING;
+
+    // Flag names for debugging/display
+    static OBJFLAGNAMES = [
+        "IMMOBILE", "EDITORLOCK", "LIGHT", "MOVING", "ANIMATING",
+        "AI", "DISABLED", "INVISIBLE", "EDITOR", "DRAWFLIP",
+        "SELDRAW", "REVEAL", "KILL", "GENERATED", "ANIMATE",
+        "PULSE", "WEIGHTLESS", "COMPLEX", "NOTIFY", "NONMAP",
+        "ONEXIT", "PAUSE", "NOWALK", "PARALIZE", "NOCOLLISION",
+        "ICED"
+    ];
+
     // Add static property for game directory
     static gameDir = '';
 
@@ -804,19 +850,21 @@ class DatParser {
         const name = stream.readString();
     
         // Read flags and position
-        const newFlags = stream.readUint32();
+        const newFlags = new ObjectFlags(stream.readUint32());
         const position = {
             x: stream.readInt32(),
             y: stream.readInt32(),
             z: stream.readInt32()
         };
     
-        // Handle flags (you'll need to implement OF_FIXEDFLAGS constant)
-        const flags = (this.flags & this.OF_FIXEDFLAGS) | (newFlags & ~this.OF_FIXEDFLAGS);
+        // Note: we might need to adjust the flags handling since we're using ObjectFlags class
+        // For now, let's store both raw value and parsed flags
+        const flagsRaw = stream.readUint32();
+        const flags = new ObjectFlags(flagsRaw);
     
         // Read velocity if mobile and version < 6
         let velocity = { x: 0, y: 0, z: 0 };
-        if (version < 6 || !(flags & this.OF_IMMOBILE)) {
+        if (version < 6 || !flags.of_immobile) {
             velocity = {
                 x: stream.readInt32(),
                 y: stream.readInt32(),
@@ -931,7 +979,8 @@ class DatParser {
     
         return {
             name,
-            flags,
+            flags,         // This will be the ObjectFlags instance
+            flagsRaw,     // This is the raw uint32 value
             position,
             velocity,
             state,
@@ -1232,39 +1281,41 @@ class ObjectFlags {
         // Convert number to 32-bit binary string
         const bits = (value >>> 0).toString(2).padStart(32, '0');
 
-        this.of_immobile = !!parseInt(bits[31]);
-        this.of_editorlock = !!parseInt(bits[30]);
-        this.of_light = !!parseInt(bits[29]);
-        this.of_moving = !!parseInt(bits[28]);
-        this.of_animating = !!parseInt(bits[27]);
-        this.of_ai = !!parseInt(bits[26]);
-        this.of_disabled = !!parseInt(bits[25]);
-        this.of_invisible = !!parseInt(bits[24]);
-        this.of_editor = !!parseInt(bits[23]);
-        this.of_foreground = !!parseInt(bits[22]);
-        this.of_seldraw = !!parseInt(bits[21]);
-        this.of_reveal = !!parseInt(bits[20]);
-        this.of_kill = !!parseInt(bits[19]);
-        this.of_generated = !!parseInt(bits[18]);
-        this.of_animate = !!parseInt(bits[17]);
-        this.of_pulse = !!parseInt(bits[16]);
-        this.of_weightless = !!parseInt(bits[15]);
-        this.of_complex = !!parseInt(bits[14]);
-        this.of_notify = !!parseInt(bits[13]);
-        this.of_nonmap = !!parseInt(bits[12]);
-        this.of_onexit = !!parseInt(bits[11]);
-        this.of_pause = !!parseInt(bits[10]);
-        this.of_nowalk = !!parseInt(bits[9]);
-        this.of_paralize = !!parseInt(bits[8]);
-        this.of_nocollision = !!parseInt(bits[7]);
-        this.of_iced = !!parseInt(bits[6]);
-        this.of_virgin = !!parseInt(bits[5]);
-        this.of_loading = !!parseInt(bits[4]);
-        this.of_shadow = !!parseInt(bits[3]);
-        this.of_background = !!parseInt(bits[2]);
-        this.of_inventory = !!parseInt(bits[1]);
-        this.of_calledpredel = !!parseInt(bits[0]);
+        this.of_immobile = !!parseInt(bits[31 - 0]);      // Not affected by gravity etc
+        this.of_editorlock = !!parseInt(bits[31 - 1]);    // Object is locked down (can't move in editor)
+        this.of_light = !!parseInt(bits[31 - 2]);         // Object generates light (a light is on for object)
+        this.of_moving = !!parseInt(bits[31 - 3]);        // Object is a moving object (characters, exits, players, missiles, etc.)
+        this.of_animating = !!parseInt(bits[31 - 4]);     // Has animating imagery (animator pointer is set)
+        this.of_ai = !!parseInt(bits[31 - 5]);            // Object has A.I.
+        this.of_disabled = !!parseInt(bits[31 - 6]);      // Object A.I. is disabled
+        this.of_invisible = !!parseInt(bits[31 - 7]);     // Not visible in map pane during normal play
+        this.of_editor = !!parseInt(bits[31 - 8]);        // Is editor only object
+        this.of_drawflip = !!parseInt(bits[31 - 9]);      // Reverse on the horizontal
+        this.of_seldraw = !!parseInt(bits[31 - 10]);      // Editor is manipulating object
+        this.of_reveal = !!parseInt(bits[31 - 11]);       // Player needs to see behind object (shutter draw)
+        this.of_kill = !!parseInt(bits[31 - 12]);         // Suicidal (tells system to kill object next frame)
+        this.of_generated = !!parseInt(bits[31 - 13]);    // Created by map generator
+        this.of_animate = !!parseInt(bits[31 - 14]);      // Call the objects Animate() func AND create object animators
+        this.of_pulse = !!parseInt(bits[31 - 15]);        // Call the object Pulse() function
+        this.of_weightless = !!parseInt(bits[31 - 16]);   // Object can move, but is not affected by gravity
+        this.of_complex = !!parseInt(bits[31 - 17]);      // Object is a complex object
+        this.of_notify = !!parseInt(bits[31 - 18]);       // Notify object of a system change (see notify codes below)
+        this.of_nonmap = !!parseInt(bits[31 - 19]);       // Not created, deleted, saved, or loaded by map (see below)
+        this.of_onexit = !!parseInt(bits[31 - 20]);       // Object is currently on an exit (used to prevent exit loops)
+        this.of_pause = !!parseInt(bits[31 - 21]);        // Script is paused
+        this.of_nowalk = !!parseInt(bits[31 - 22]);       // Don't use walk map for this tile
+        this.of_paralize = !!parseInt(bits[31 - 23]);     // Freeze the object in mid-animation
+        this.of_nocollision = !!parseInt(bits[31 - 24]);  // Let the object go through boundries
+        this.of_iced = !!parseInt(bits[31 - 25]);         // Used to know when to end the iced effect
     }
+    // NOTE: OF_NONMAP
+    // ----------------
+    //
+    // OF_NONMAP tells the map system that this object is managed outside of the regular map
+    // system.  This object will not be LOADED, SAVED, CREATED, or DELETED by the map or
+    // sector system.  Any object with this flag can be inserted into the map and assume that
+    // it won't be deleted by the map systemThis flag is intended for players, but can be used for
+    // other objects. 
 }
 
 async function main() {
