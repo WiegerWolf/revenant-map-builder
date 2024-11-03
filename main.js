@@ -1216,11 +1216,45 @@ class DatParser {
                 return this.loadTileData(stream, version, objVersion);
             case 'exit':
                 return this.loadExitData(stream, version, objVersion);
+            case 'container':
+                return this.loadContainerData(stream, version, objVersion);
+            case 'complexobject':
+                return this.loadComplexObjectData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
                 return {};
         }
+    }
+
+    static loadComplexObjectData(stream, version, objVersion) {
+        let baseData;
+        
+        // Load base object data based on version
+        if (objVersion >= 1) {
+            baseData = this.loadBaseObjectData(stream, version, objVersion);
+        } else {
+            baseData = this.loadBaseObjectData(stream, version, 0);
+        }
+    
+        // Load root state
+        let actionBlock;
+        if (version < 7) {
+            actionBlock = new ActionBlock("still"); // DefaultRootState
+        } else {
+            const action = stream.readUint8();
+            const name = stream.readString(); // Assuming readString reads RESNAMELEN chars
+            actionBlock = new ActionBlock(name, action);
+        }
+    
+        return {
+            ...baseData,
+            className: 'complexobject',
+            root: actionBlock,    // root state
+            doing: actionBlock,   // current state
+            desired: actionBlock, // desired state
+            state: -1            // FindState would return index of state, defaulting to -1
+        };
     }
     
     static loadTileData(stream, version, objVersion) {
@@ -1334,6 +1368,59 @@ class ExitRef {
         this.ambient = 0;        // level of ambient light
         this.ambcolor = null;    // color of ambient light (SColor)
         this.next = null;        // next in list
+    }
+}
+
+const RESNAMELEN = 32;
+
+const ActionTypes = {
+    ACTION_NONE: 0,
+    ACTION_ANIMATE: 1,
+    ACTION_MOVE: 2,
+    ACTION_COMBAT: 3,
+    ACTION_COMBATMOVE: 4,
+    ACTION_COMBATLEAP: 5,
+    ACTION_COLLAPSE: 6,
+    ACTION_ATTACK: 7,
+    ACTION_BLOCK: 8,
+    ACTION_DODGE: 9,
+    ACTION_MISS: 10,
+    ACTION_INVOKE: 11,
+    ACTION_IMPACT: 12,
+    ACTION_STUN: 13,
+    ACTION_KNOCKDOWN: 14,
+    ACTION_FLYBACK: 15,
+    ACTION_SAY: 16,
+    ACTION_PIVOT: 17,
+    ACTION_PULL: 18,
+    ACTION_DEAD: 19,
+    ACTION_PULP: 20,
+    ACTION_BURN: 21,
+    ACTION_FLAIL: 22,
+    ACTION_SLEEP: 23,
+    ACTION_LEAP: 24,
+    ACTION_BOW: 25,
+    ACTION_BOWMOVE: 26,
+    ACTION_BOWAIM: 27,
+    ACTION_BOWSHOOT: 28
+};
+
+class ActionBlock {
+    constructor(name, action = ActionTypes.ACTION_ANIMATE) {
+        this.action = action;
+        this.name = name;
+        this.frame = 0;
+        this.wait = 0;
+        this.angle = 0;
+        this.moveangle = 0;
+        this.turnrate = 0;
+        this.target = null;  // S3DPoint
+        this.obj = null;     // ObjectInstance reference
+        this.attack = null;
+        this.impact = null;
+        this.damage = 0;
+        this.data = null;
+        this.flags = 0;
     }
 }
 
