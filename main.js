@@ -1133,6 +1133,8 @@ class DatParser {
             }
         }
 
+        // If still not found, return -1
+        console.warn(`Could not find object type ${uniqueId.toString(16)} in class ${className}`);
         return -1;
     }
 
