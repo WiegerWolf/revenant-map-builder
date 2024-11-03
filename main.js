@@ -1216,7 +1216,11 @@ class DatParser {
     static loadObjectData(stream, version, objVersion, typeInfo, objClassName) {
         switch (objClassName.toLowerCase()) {
             case 'tile':
-                return this.loadTileData(stream, version, objVersion);
+            case 'effect':
+            case 'helper':
+            case 'shadow':
+            case 'item':
+                return this.loadBaseObjectData(stream, version, objVersion);
             case 'exit':
                 return this.loadExitData(stream, version, objVersion);
             case 'container':
@@ -1225,25 +1229,11 @@ class DatParser {
                 return this.loadComplexObjectData(stream, version, objVersion);
             case 'character':
                 return this.loadCharacterData(stream, version, objVersion);
-            case 'item':
-                return this.loadItemData(stream, version, objVersion);
-            case 'effect':
-                return this.loadEffectData(stream, version, objVersion);
-            case 'helper':
-                return this.loadHelperData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
                 return {};
         }
-    }
-
-    static loadHelperData(stream, version, objVersion) {
-        return this.loadBaseObjectData(stream, version, objVersion);
-    }
-
-    static loadEffectData(stream, version, objVersion) {
-        return this.loadBaseObjectData(stream, version, objVersion);
     }
 
     static loadCharacterData(stream, version, objVersion) {
@@ -1269,7 +1259,13 @@ class DatParser {
         // Load recovery timestamps
         const lasthealthrecov = stream.readInt32();
         const lastfatiguerecov = stream.readInt32();
-        const lastmanarecov = stream.readInt32();
+        let lastmanarecov = -1;
+        try {
+            
+        lastmanarecov = stream.readInt32();
+        } catch (error) {
+            debugger
+        }
 
         // Load poison damage (version 4+)
         let lastpoisondamage = -1;
@@ -1319,16 +1315,7 @@ class DatParser {
             actionBlock = new ActionBlock("still"); // DefaultRootState
         } else {
             const action = stream.readUint8();
-
-            // Read fixed-length name (RESNAMELEN)
-            const nameBytes = new Uint8Array(stream.dataView.buffer, stream.dataView.byteOffset + stream.offset, RESNAMELEN);
-            stream.skip(RESNAMELEN);
-
-            let name = '';
-            for (let i = 0; i < nameBytes.length; i++) {
-                if (nameBytes[i] === 0) break;
-                name += String.fromCharCode(nameBytes[i]);
-            }
+            const name = stream.readString();
 
             actionBlock = new ActionBlock(name, action);
         }
@@ -1341,14 +1328,6 @@ class DatParser {
             desired: actionBlock,
             state: -1
         };
-    }
-
-    static loadTileData(stream, version, objVersion) {
-        return this.loadBaseObjectData(stream, version, objVersion);
-    }
-    static loadItemData(stream, version, objVersion) {
-        debugger;
-        return this.loadBaseObjectData(stream, version, objVersion);
     }
 
     static loadContainerData(stream, version, objVersion) {
