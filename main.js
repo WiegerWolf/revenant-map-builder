@@ -65,15 +65,17 @@ class ImageryDatParser {
     static QUICKLOAD_FILE_VERSION = 1;
     static MAX_IMAGERY_FILENAME_LENGTH = 80; // MAXIMFNAMELEN
     static MAXANIMNAME = 32;
+    static gameDir = "";
 
-    static async loadFile(filePath) {
+    static async loadFile(filePath, gameDir) {
         try {
+            this.gameDir = gameDir;
             const buffer = await fs.readFile(filePath);
             const arrayBuffer = buffer.buffer.slice(
                 buffer.byteOffset,
                 buffer.byteOffset + buffer.byteLength
             );
-            return ImageryDatParser.parse(arrayBuffer);
+            return await ImageryDatParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading IMAGERY.DAT file:', error);
             debugger;
@@ -81,7 +83,7 @@ class ImageryDatParser {
         }
     }
 
-    static parse(arrayBuffer) {
+    static async parse(arrayBuffer) {
         const stream = new InputStream(arrayBuffer);
 
         // Read QuickLoad Header
@@ -121,13 +123,14 @@ class ImageryDatParser {
             const imageryHeader = this.parseImageryHeader(stream, headerSize, arrayBuffer);
 
             // Read imagery body
-            const imageryBody = this.parseImageryBody(filename, imageryHeader);
+            const imageryBody = await this.parseImageryBody(filename, imageryHeader);
 
             // Add entry to the list
             entries.push({
                 filename,
                 headerSize,
-                header: imageryHeader
+                header: imageryHeader,
+                body: imageryBody
             });
         }
 
@@ -194,12 +197,66 @@ class ImageryDatParser {
         return header;
     }
 
-    static parseImageryBody(filename, imageryHeader) {
-        // Placeholder for parsing imagery body based on filename and imageryHeader
-        // This will depend on the specific format of the imagery data
-        debugger;
-        return {};
-    }
+    static async parseImageryBody(filename, imageryHeader) {
+        // The imagery body is actually stored in separate .I2D or .I3D files
+        // We need to load these files using the CGSResourceParser
+    
+        // First, determine if it's a 2D or 3D imagery based on the filename extension
+        const extension = path.extname(filename).toLowerCase();
+        const is3D = extension === '.i3d';
+    
+        // Create a result object to store all imagery data
+        const result = {
+            filename,
+            header: imageryHeader,
+            is3D,
+            states: []
+        };
+    
+        // For each state in the imagery header, load its corresponding resource file
+        for (let i = 0; i < imageryHeader.numStates; i++) {
+            const state = imageryHeader.states[i];
+            
+            // Construct the resource filename
+            // The resource files are typically stored in the Imagery directory
+            const resourcePath = filename;
+    
+            try {
+                // Load the resource file
+                const resource = await DatParser.loadResourceFile(this.gameDir, resourcePath);
+                
+                if (resource) {
+                    // Add the loaded resource data to our state
+                    result.states.push({
+                        ...state,
+                        resource: resource,
+                        bitmaps: resource.bitmaps.map(bitmap => ({
+                            ...bitmap,
+                            // You might want to add additional processing here
+                            // For example, converting to canvas if needed:
+                            // canvas: CGSResourceParser.bitmapToCanvas(bitmap)
+                        }))
+                    });
+                } else {
+                    console.warn(`Failed to load resource for state ${i} of ${filename}`);
+                    result.states.push({
+                        ...state,
+                        resource: null,
+                        bitmaps: []
+                    });
+                }
+            } catch (error) {
+                console.error(`Error loading resource for state ${i} of ${filename}:`, error);
+                result.states.push({
+                    ...state,
+                    resource: null,
+                    bitmaps: []
+                });
+            }
+        }
+    
+        return result;
+    }    
 }
 
 class CGSResourceParser {
@@ -1258,15 +1315,15 @@ class DatParser {
     static loadWeaponData(stream, version, objVersion) {
         // Load base object data first
         const baseData = this.loadBaseObjectData(stream, version, objVersion);
-    
+
         // Read poison value
         const poison = stream.readInt32();
-    
+
         return {
             ...baseData,
             className: 'weapon',
             poison,
-    
+
             // Add helper methods and getters for stats
             getPoison: () => poison,
             getType: () => baseData.stats?.find(s => s.name === "Type")?.value ?? 0,
@@ -1274,9 +1331,9 @@ class DatParser {
             getEqSlot: () => baseData.stats?.find(s => s.name === "EqSlot")?.value ?? 0,
             getCombining: () => baseData.stats?.find(s => s.name === "Combining")?.value ?? 0,
             getValue: () => baseData.stats?.find(s => s.name === "Value")?.value ?? 0,
-    
+
             // Helper method to clear weapon (matches C++ ClearWeapon())
-            clearWeapon: function() {
+            clearWeapon: function () {
                 this.poison = 0;
             }
         };
@@ -1285,10 +1342,10 @@ class DatParser {
     static loadScrollData(stream, version, objVersion) {
         // Load base object data first
         const baseData = this.loadBaseObjectData(stream, version, objVersion);
-    
+
         // Read text length
         const textLength = stream.readInt16();
-    
+
         let text = null;
         if (textLength > 0) {
             // Read text characters
@@ -1299,18 +1356,18 @@ class DatParser {
             // Convert to string
             text = new TextDecoder('ascii').decode(textBytes);
         }
-    
+
         return {
             ...baseData,
             className: 'scroll',
             text,
-            
+
             // Add helper methods
             getText: () => text,
             cursorType: (inst) => inst ? CURSOR_NONE : CURSOR_EYE
         };
     }
-    
+
     static loadCharacterData(stream, version, objVersion) {
         let baseData;
 
@@ -1336,8 +1393,8 @@ class DatParser {
         const lastfatiguerecov = stream.readInt32();
         let lastmanarecov = -1;
         try {
-            
-        lastmanarecov = stream.readInt32();
+
+            lastmanarecov = stream.readInt32();
         } catch (error) {
             debugger
         }
@@ -1734,7 +1791,7 @@ async function main() {
         // Load IMAGERY.DAT first
         console.log('Loading IMAGERY.DAT...');
         const imageryDatPath = path.join(resourcesDir, 'imagery.dat');
-        const imageryData = await ImageryDatParser.loadFile(imageryDatPath);
+        const imageryData = await ImageryDatParser.loadFile(imageryDatPath, gameDir);
         if (imageryData) {
             console.log(`Loaded ${imageryData.entries.length} imagery entries`);
             debugger;
