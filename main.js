@@ -1229,13 +1229,44 @@ class DatParser {
                 return this.loadComplexObjectData(stream, version, objVersion);
             case 'character':
                 return this.loadCharacterData(stream, version, objVersion);
+            case 'scroll':
+                return this.loadScrollData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
                 return {};
         }
     }
-
+    
+    static loadScrollData(stream, version, objVersion) {
+        // Load base object data first
+        const baseData = this.loadBaseObjectData(stream, version, objVersion);
+    
+        // Read text length
+        const textLength = stream.readInt16();
+    
+        let text = null;
+        if (textLength > 0) {
+            // Read text characters
+            const textBytes = new Uint8Array(textLength);
+            for (let i = 0; i < textLength; i++) {
+                textBytes[i] = stream.readUint8();
+            }
+            // Convert to string
+            text = new TextDecoder('ascii').decode(textBytes);
+        }
+    
+        return {
+            ...baseData,
+            className: 'scroll',
+            text,
+            
+            // Add helper methods
+            getText: () => text,
+            cursorType: (inst) => inst ? CURSOR_NONE : CURSOR_EYE
+        };
+    }
+    
     static loadCharacterData(stream, version, objVersion) {
         let baseData;
 
