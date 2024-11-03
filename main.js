@@ -766,11 +766,11 @@ class DatParser {
     
         // Get start of object
         const startPos = stream.getPos();
-    
+        const typeInfo = this.getTypeInfo(uniqueId, objClass)
         // Load object data
         const objectData = forcesimple ? 
             this.loadBaseObjectData(stream, version, objVersion) :  // Used if object changed class
-            this.loadObjectData(stream, version, objVersion);       // This should normally be used
+            this.loadObjectData(stream, version, objVersion, typeInfo, this.OBJ_CLASSES[objClass]);       // This should normally be used
         
         const inventory = this.loadInventory(stream, version);
     
@@ -791,7 +791,7 @@ class DatParser {
                 name: this.OBJ_CLASSES[objClass] || 'unknown'
             },
             type: objType,
-            typeInfo: this.getTypeInfo(uniqueId, objClass),
+            typeInfo,
             uniqueId,
             blockSize,
             data: objectData,
@@ -1204,9 +1204,16 @@ class DatParser {
         }
     }
 
-    static loadObjectData(stream, version, objVersion, forcesimple) {
-        // Implement object-specific loading logic here
-        return {};
+    static loadObjectData(stream, version, objVersion, typeInfo, objClassName) {
+        switch (objClassName) {
+            case 'tile':
+                // todo
+                return this.loadBaseObjectData(stream, version, objVersion);
+            default:
+                console.warn(`Unknown object class: ${objClassName}`);
+                debugger;
+                return {};
+        }
     }
 
     static loadInventory(stream, version) {
