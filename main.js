@@ -560,6 +560,11 @@ class ClassDefParser {
 }
 
 class DatParser {
+    static SectorMapFCC = ('M'.charCodeAt(0) << 0) |
+        ('A'.charCodeAt(0) << 8) |
+        ('P'.charCodeAt(0) << 16) |
+        (' '.charCodeAt(0) << 24);
+    static MAXOBJECTCLASSES = 64;
     static OBJ_CLASSES = {
         0: 'item',
         1: 'weapon',
@@ -589,58 +594,7 @@ class DatParser {
         25: 'effect',
         26: 'mapscroll'
     };
-    static SectorMapFCC = ('M'.charCodeAt(0) << 0) |
-        ('A'.charCodeAt(0) << 8) |
-        ('P'.charCodeAt(0) << 16) |
-        (' '.charCodeAt(0) << 24);
-    static MAXOBJECTCLASSES = 64;
     static OBJCLASS_TILE = 9;
-
-    // Object Flags
-    static OF_IMMOBILE = 1 << 0;      // Not affected by gravity etc
-    static OF_EDITORLOCK = 1 << 1;    // Object is locked down (can't move in editor)
-    static OF_LIGHT = 1 << 2;         // Object generates light
-    static OF_MOVING = 1 << 3;        // Object is a moving object
-    static OF_ANIMATING = 1 << 4;     // Has animating imagery
-    static OF_AI = 1 << 5;            // Object has A.I.
-    static OF_DISABLED = 1 << 6;      // Object A.I. is disabled
-    static OF_INVISIBLE = 1 << 7;     // Not visible in map pane during normal play
-    static OF_EDITOR = 1 << 8;        // Is editor only object
-    static OF_DRAWFLIP = 1 << 9;      // Reverse on the horizontal
-    static OF_SELDRAW = 1 << 10;      // Editor is manipulating object
-    static OF_REVEAL = 1 << 11;       // Player needs to see behind object
-    static OF_KILL = 1 << 12;         // Suicidal
-    static OF_GENERATED = 1 << 13;    // Created by map generator
-    static OF_ANIMATE = 1 << 14;      // Call Animate() func AND create animators
-    static OF_PULSE = 1 << 15;        // Call the object Pulse() function
-    static OF_WEIGHTLESS = 1 << 16;   // Can move, but not affected by gravity
-    static OF_COMPLEX = 1 << 17;      // Object is a complex object
-    static OF_NOTIFY = 1 << 18;       // Notify object of a system change
-    static OF_NONMAP = 1 << 19;       // Not managed by map system
-    static OF_ONEXIT = 1 << 20;       // Object is currently on an exit
-    static OF_PAUSE = 1 << 21;        // Script is paused
-    static OF_NOWALK = 1 << 22;       // Don't use walk map for this tile
-    static OF_PARALIZE = 1 << 23;     // Freeze object in mid-animation
-    static OF_NOCOLLISION = 1 << 24;  // Let object go through boundaries
-    static OF_ICED = 1 << 25;         // Used for iced effect
-
-    // Fixed flags that shouldn't be changed
-    static OF_FIXEDFLAGS = 
-        this.OF_COMPLEX | 
-        this.OF_NOTIFY | 
-        this.OF_NONMAP | 
-        this.OF_AI | 
-        this.OF_MOVING;
-
-    // Flag names for debugging/display
-    static OBJFLAGNAMES = [
-        "IMMOBILE", "EDITORLOCK", "LIGHT", "MOVING", "ANIMATING",
-        "AI", "DISABLED", "INVISIBLE", "EDITOR", "DRAWFLIP",
-        "SELDRAW", "REVEAL", "KILL", "GENERATED", "ANIMATE",
-        "PULSE", "WEIGHTLESS", "COMPLEX", "NOTIFY", "NONMAP",
-        "ONEXIT", "PAUSE", "NOWALK", "PARALIZE", "NOCOLLISION",
-        "ICED"
-    ];
 
     // Add static property for game directory
     static gameDir = '';
@@ -1002,13 +956,6 @@ class DatParser {
         };
     }
     
-    // Add these constants and helper methods to the class
-    static OF_FIXEDFLAGS = 0; // Define appropriate value
-    static OF_IMMOBILE = 0x80000000;
-    static OF_NONMAP = 0x00001000;
-    static OF_ANIMATE = 0x00020000;
-    static OF_LIGHT = 0x20000000;
-    
     static getNumObjStats() {
         // Implement this method to return the number of object stats
         return 0;
@@ -1314,7 +1261,7 @@ class ObjectFlags {
     // OF_NONMAP tells the map system that this object is managed outside of the regular map
     // system.  This object will not be LOADED, SAVED, CREATED, or DELETED by the map or
     // sector system.  Any object with this flag can be inserted into the map and assume that
-    // it won't be deleted by the map systemThis flag is intended for players, but can be used for
+    // it won't be deleted by the map system. This flag is intended for players, but can be used for
     // other objects. 
 }
 
