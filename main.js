@@ -674,23 +674,23 @@ class DatParser {
         let def = {};
         let forcesimple = false;
         let corrupted = false;
-    
+
         // ****** Load object block header ******
-    
+
         // Get object version
         if (version >= 8) {
             objVersion = stream.readInt16();
         }
-    
+
         if (objVersion < 0) { // Objversion is the placeholder in map version 8 or above
             return null;
         }
-    
+
         objClass = stream.readInt16();
         if (objClass < 0) {   // Placeholder for empty object slot
             return null;
         }
-    
+
         // Check the sector map version before we read the type info
         if (version < 1) {
             // Version 0 - No Unique ID's, so just read the objtype directly
@@ -710,9 +710,9 @@ class DatParser {
             uniqueId = stream.readUint32();
             blockSize = stream.readInt16();
         }
-    
+
         // ****** Is this object any good? ******
-        
+
         const cl = this.getObjectClass(objClass);
         if (!cl) {
             if (this.Debug) {
@@ -727,10 +727,10 @@ class DatParser {
                 corrupted = true;
             }
         }
-    
+
         if (objType < 0) {
             objType = this.findObjectType(uniqueId, objClass);
-    
+
             if (objType < 0) {
                 // not found in this class, so check all of them
                 for (let newObjClass = 0; newObjClass < this.MAXOBJECTCLASSES; newObjClass++) {
@@ -743,7 +743,7 @@ class DatParser {
                     }
                 }
             }
-    
+
             if (objType < 0) {  // Still can't find type
                 if (this.Debug) {
                     throw new Error(`Object unique id 0x${uniqueId.toString(16)} not found in class.def`);
@@ -758,32 +758,32 @@ class DatParser {
                 }
             }
         }
-    
+
         // ****** Create the object ******
-    
+
         def.objClass = objClass;
         def.objType = objType;
-    
+
         // Get start of object
         const startPos = stream.getPos();
         const typeInfo = this.getTypeInfo(uniqueId, objClass)
         // Load object data
-        const objectData = forcesimple ? 
+        const objectData = forcesimple ?
             this.loadBaseObjectData(stream, version, objVersion) :  // Used if object changed class
             this.loadObjectData(stream, version, objVersion, typeInfo, this.OBJ_CLASSES[objClass]);       // This should normally be used
-        
+
         const inventory = this.loadInventory(stream, version);
-    
+
         // Reset position to start of next object
         if (blockSize >= 0) {
             stream.setPos(startPos + blockSize);
         }
-    
+
         // If this object is corrupted in some way, return null
         if (corrupted || (isMap && this.hasNonMapFlag(objectData))) {
             return null;
         }
-    
+
         return {
             version: objVersion,
             class: {
@@ -802,20 +802,18 @@ class DatParser {
     static loadBaseObjectData(stream, version, objVersion) {
         // Read name (length-prefixed string)
         const name = stream.readString();
-    
-        // Read flags and position
-        const newFlags = new ObjectFlags(stream.readUint32());
+
+        // Note: we might need to adjust the flags handling since we're using ObjectFlags class
+        // For now, let's store both raw value and parsed flags
+        const flagsRaw = stream.readUint32();
+        const flags = new ObjectFlags(flagsRaw);
+
         const position = {
             x: stream.readInt32(),
             y: stream.readInt32(),
             z: stream.readInt32()
         };
-    
-        // Note: we might need to adjust the flags handling since we're using ObjectFlags class
-        // For now, let's store both raw value and parsed flags
-        const flagsRaw = stream.readUint32();
-        const flags = new ObjectFlags(flagsRaw);
-    
+
         // Read velocity if mobile and version < 6
         let velocity = { x: 0, y: 0, z: 0 };
         if (version < 6 || !flags.of_immobile) {
@@ -825,7 +823,7 @@ class DatParser {
                 z: stream.readInt32()
             };
         }
-    
+
         // Read state
         let state;
         if (version < 9) {
@@ -833,23 +831,23 @@ class DatParser {
         } else {
             state = stream.readUint16();
         }
-    
+
         // Handle level for non-map objects
         let level = 0;
-        if (version >= 6 && (flags & this.OF_NONMAP)) {
+        if (version >= 6 && flags.of_nonmap) {
             if (version < 9) {
                 level = stream.readUint8();
             } else {
                 level = stream.readUint16();
             }
         }
-    
+
         // Handle health for old versions
         let health;
         if (version < 5) {
             health = stream.readUint8();
         }
-    
+
         // Read inventory and rotation data
         let inventNum, invIndex, shadow, rotateX, rotateY, rotateZ, mapIndex;
         if (version < 3) {
@@ -859,7 +857,7 @@ class DatParser {
             const dummy16_2 = stream.readInt16();
             shadow = stream.readInt32();
             const dummy8 = stream.readUint8();
-    
+
             // ignore inventories in old version
             inventNum = -1;
             mapIndex = -1;
@@ -872,13 +870,13 @@ class DatParser {
             rotateZ = stream.readUint8();
             mapIndex = stream.readInt32();
         }
-    
+
         // Handle animation and stats
         let frame = 0;
         let frameRate = 1;
         let group = 0;
         let stats = [];
-    
+
         if (version < 5) {
             // Set up empty stat array and stick health in it
             if (this.getNumObjStats() > 0) {
@@ -887,7 +885,7 @@ class DatParser {
             }
         } else {
             if (version >= 6) {
-                if (flags & this.OF_ANIMATE) {
+                if (flags.of_animate) {
                     frame = stream.readInt16();
                     frameRate = stream.readInt16();
                 }
@@ -895,9 +893,9 @@ class DatParser {
                 frame = stream.readInt16();
                 frameRate = stream.readInt16();
             }
-    
+
             group = stream.readUint8();
-    
+
             // Read stats
             const numStats = stream.readUint8();
             if (numStats > 0) {
@@ -909,28 +907,38 @@ class DatParser {
                 }
             }
         }
-    
+
         // Read light data if present
         let lightDef = null;
-        if (flags & this.OF_LIGHT) {
-            lightDef = {
-                flags: stream.readUint32(),
-                pos: {
-                    x: stream.readInt32(),
-                    y: stream.readInt32(),
-                    z: stream.readInt32()
-                },
-                color: {
-                    red: stream.readUint8(),
-                    green: stream.readUint8(),
-                    blue: stream.readUint8()
-                },
-                intensity: stream.readInt32(),
-                multiplier: stream.readInt32()
-            };
+        if (flags.of_light) {
+            lightDef = new SLightDef();
+
+            // Read flags
+            const lightFlags = stream.readUint8();
+            lightDef.flags = new LightFlags(lightFlags);
+
+            // Read position
+            lightDef.pos = new S3DPoint(
+                stream.readInt32(),  // x
+                stream.readInt32(),  // y
+                stream.readInt32()   // z
+            );
+
+            // Read color
+            lightDef.color = new SColor(
+                stream.readUint8(),  // red
+                stream.readUint8(),  // green
+                stream.readUint8()   // blue
+            );
+
+            // Read intensity and multiplier
+            lightDef.intensity = stream.readUint8();
+            lightDef.multiplier = stream.readInt16();
+
+            // Set the light and animate flags
             flags |= this.OF_LIGHT | this.OF_ANIMATE;
         }
-    
+
         return {
             name,
             flags,         // This will be the ObjectFlags instance
@@ -955,19 +963,19 @@ class DatParser {
             lightDef
         };
     }
-    
+
     static getNumObjStats() {
         // Implement this method to return the number of object stats
         return 0;
     }
-    
+
     static setHealth(health, stats) {
         // Implement this method to set health in stats array
         if (stats.length > 0) {
             stats[0] = health;
         }
     }
-    
+
     static Debug = false; // Add this class property
 
     static readBaseObjectData(stream) {
@@ -1220,6 +1228,89 @@ class DatParser {
     static hasNonMapFlag(objectData) {
         // Implement flag checking logic here
         return false;
+    }
+}
+
+// Light flags
+class LightFlags {
+    static LIGHT_DIR = 1 << 0;  // Directional light
+    static LIGHT_SUN = 1 << 1;  // Sunlight
+    static LIGHT_MOON = 1 << 2; // Moonlight
+
+    constructor(value) {
+        this.isDirectional = !!(value & LightFlags.LIGHT_DIR);
+        this.isSunlight = !!(value & LightFlags.LIGHT_SUN);
+        this.isMoonlight = !!(value & LightFlags.LIGHT_MOON);
+    }
+}
+
+class S3DPoint {
+    constructor(x = 0, y = 0, z = 0) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+
+    add(other) {
+        return new S3DPoint(
+            this.x + other.x,
+            this.y + other.y,
+            this.z + other.z
+        );
+    }
+
+    subtract(other) {
+        return new S3DPoint(
+            this.x - other.x,
+            this.y - other.y,
+            this.z - other.z
+        );
+    }
+
+    multiply(scalar) {
+        return new S3DPoint(
+            this.x * scalar,
+            this.y * scalar,
+            this.z * scalar
+        );
+    }
+
+    inRange(pos, dist) {
+        const absX = Math.abs(this.x - pos.x);
+        const absY = Math.abs(this.y - pos.y);
+        return absY <= dist &&
+            absX <= dist &&
+            (Math.pow(absY, 2) + Math.pow(absX, 2) <= Math.pow(dist, 2) * 2);
+    }
+
+    inRange3D(pos, dist) {
+        const absX = Math.abs(this.x - pos.x);
+        const absY = Math.abs(this.y - pos.y);
+        const absZ = Math.abs(this.z - pos.z);
+        return absY <= dist &&
+            absX <= dist &&
+            absZ <= dist &&
+            (Math.pow(absY, 2) + Math.pow(absX, 2) + Math.pow(absZ, 2) <= Math.pow(dist, 2) * 3);
+    }
+}
+
+class SColor {
+    constructor(red = 0, green = 0, blue = 0) {
+        this.red = red;
+        this.green = green;
+        this.blue = blue;
+    }
+}
+
+class SLightDef {
+    constructor() {
+        this.flags = new LightFlags(0);    // LIGHT_x
+        this.multiplier = 0;               // Multiplier
+        this.pos = new S3DPoint();         // Position of light
+        this.color = new SColor();         // RGB Color of light 
+        this.intensity = 0;                // Intensity of light
+        this.lightindex = 0;               // Light index for 3d system
+        this.lightid = 0;                  // Light id for dls system
     }
 }
 
