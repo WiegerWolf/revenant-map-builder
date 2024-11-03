@@ -637,7 +637,7 @@ class DatParser {
         // Load each object
         for (let i = 0; i < numObjects; i++) {
             console.log(`Loading object ${i + 1} of ${numObjects}`);
-            const obj = this.loadObject(stream, version);
+            const obj = this.loadObject(stream, version, true);
             if (obj) {
                 objects.push(obj);
             }
@@ -665,7 +665,7 @@ class DatParser {
         }
     }
 
-    static loadObject(stream, version, isMap = true) {
+    static loadObject(stream, version, isMap = false) {
         let uniqueId;
         let objVersion = 0;
         let objClass;
@@ -1222,6 +1222,8 @@ class DatParser {
                 return this.loadComplexObjectData(stream, version, objVersion);
             case 'character':
                 return this.loadCharacterData(stream, version, objVersion);
+            case 'item':
+                return this.loadItemData(stream, version, objVersion);
             default:
                 console.warn(`Unknown object class: ${objClassName}`);
                 debugger;
@@ -1329,6 +1331,10 @@ class DatParser {
     static loadTileData(stream, version, objVersion) {
         return this.loadBaseObjectData(stream, version, objVersion);
     }
+    static loadItemData(stream, version, objVersion) {
+        debugger;
+        return this.loadBaseObjectData(stream, version, objVersion);
+    }
 
     static loadContainerData(stream, version, objVersion) {
         // Load base object data first
@@ -1387,7 +1393,6 @@ class DatParser {
 
         // Load each inventory object
         for (let i = 0; i < num; i++) {
-            debugger; // code is not tested below. investigate if we ever end up here, espesially that recursive load object call
             try {
                 const inst = this.loadObject(stream, version);
                 if (inst) {
@@ -1408,8 +1413,7 @@ class DatParser {
     }
 
     static hasNonMapFlag(objectData) {
-        // Implement flag checking logic here
-        return false;
+        return objectData.flags.of_nonmap;
     }
 }
 
