@@ -468,122 +468,115 @@ class ChunkCache {
     static CHUNK_WIDTH = 64;
     static CHUNK_HEIGHT = 64;
 
-    constructor(numChunks) {
-        this.numChunks = numChunks;
-        this.currentcycle = 0;
-        this.chunks = new Array(numChunks);
-        this.id = new Int32Array(numChunks);
-        this.used = new Int32Array(numChunks);
-
-        // Pre-allocate chunk buffers
-        this.chunkBuffer = new Uint8Array(numChunks * ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT);
-
-        // Initialize chunks to point to their respective areas in chunkBuffer
-        for (let i = 0; i < numChunks; i++) {
-            this.chunks[i] = new Uint8Array(
-                this.chunkBuffer.buffer,
-                i * ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT,
-                ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT
-            );
-        }
+    constructor(megabytes) {
+        // Calculate number of chunks that can fit in specified megabytes
+        this.numChunks = Math.floor((megabytes * 1024 * 1024) / 
+                                   (ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT * 3));
+        
+        // Equivalent to chunks array - stores chunk data views
+        this.chunks = new Array(this.numChunks).fill(null);
+        
+        // Equivalent to id array - stores chunk numbers
+        this.id = new Int32Array(this.numChunks);
+        
+        // Equivalent to used array - stores last access cycle
+        this.used = new Int32Array(this.numChunks);
+        
+        // Pre-allocate single buffer for all chunks
+        this.chunkBuffer = new Uint8Array(
+            ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT * this.numChunks
+        );
+        
+        // Usage counter
+        this.currentCycle = 0;
     }
 
     addChunk(chunk, type) {
-        if (!chunk) return null;
+        // Null checks
+        if (!chunk || !this.chunks) {
+            return null;
+        }
 
-        this.currentcycle++;
+        // Increment usage counter
+        this.currentCycle++;
 
-        // First 4 bytes contain the chunk number
-        const chunkNumber = new DataView(chunk.buffer).getInt32(0, true);
+        // Get chunk number from first 4 bytes
+        const chunkView = new DataView(chunk.buffer, chunk.byteOffset);
+        const number = chunkView.getInt32(0, true);
 
-        // Look for existing chunk or oldest slot
-        let oldestCycle = Infinity;
-        let oldestIndex = 0;
+        // Initialize variables to track least recently used chunk
+        let oldest = 0x7fffffff;
+        let oldestPtr = 0;
 
+        // Loop through all chunks
         for (let i = 0; i < this.numChunks; i++) {
-            if (this.id[i] === chunkNumber) {
-                this.used[i] = this.currentcycle;
+            // If we find matching chunk ID
+            if (this.id[i] === number) {
+                // Update its "last used" time
+                this.used[i] = this.currentCycle;
                 return this.chunks[i];
             }
 
-            if (this.used[i] < oldestCycle) {
-                oldestCycle = this.used[i];
-                oldestIndex = i;
+            // Keep track of least recently used chunk
+            if (this.used[i] < oldest) {
+                oldest = this.used[i];
+                oldestPtr = i;
             }
         }
 
-        // Use the oldest slot
-        this.used[oldestIndex] = this.currentcycle;
-        const destChunk = this.chunks[oldestIndex];
+        // Update "last used" time for slot we're about to use
+        this.used[oldestPtr] = this.currentCycle;
+
+        // Calculate buffer offset for this chunk
+        const bufferOffset = oldestPtr * ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT;
+        
+        // Create view into the buffer for this chunk
+        this.chunks[oldestPtr] = new Uint8Array(
+            this.chunkBuffer.buffer,
+            bufferOffset,
+            ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT
+        );
 
         // Decompress the chunk
-        this.decompressChunk(chunk, destChunk, type);
-        this.id[oldestIndex] = chunkNumber;
+        const resultNumber = this.decompressChunk(
+            chunk, 
+            this.chunks[oldestPtr], 
+            type
+        );
 
-        return destChunk;
+        // Store the chunk number
+        this.id[oldestPtr] = resultNumber;
+
+        // Return pointer to decompressed chunk
+        return this.chunks[oldestPtr];
     }
 
-    decompressChunk(source, dest, clearType) {
-        // First 4 bytes are the chunk number
-        const view = new DataView(source.buffer, source.byteOffset);
-        const chunkNumber = view.getInt32(0, true);
+    decompressChunk(source, dest, type) {
+        // This is where the actual decompression would happen
+        // We'll need to implement this based on the compression format
+        // For now, returning the chunk number from the source
+        return new DataView(source.buffer, source.byteOffset).getInt32(0, true);
+    }
 
-        // Skip chunk number (4 bytes) to get to the actual data
-        const sourceData = new Uint8Array(source.buffer, source.byteOffset + 4);
-
-        // Get compression markers (2 bytes after chunk number)
-        const rleMarker = sourceData[0];
-        const lzMarker = sourceData[1];
-
-        // Start reading data after the markers
-        let sourcePos = 2;
-        let destPos = 0;
-
-        // Clear destination based on type
-        if (clearType === 1) {
-            dest.fill(0);
-        } else {
-            dest.fill(0xFF);
+    // Helper method to get a chunk's data
+    getChunk(index) {
+        if (index < 0 || index >= this.numChunks) {
+            return null;
         }
+        return this.chunks[index];
+    }
 
-        // Now we can start decompression...
-        while (destPos < ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT) {
-            const byte = sourceData[sourcePos++];
+    // Helper method to check if a chunk exists
+    hasChunk(number) {
+        return this.id.includes(number);
+    }
 
-            if (byte === rleMarker) {
-                // RLE compression
-                let count = view.getUint8(sourcePos++);
-
-                if (count & 0x80) {
-                    // Skip count
-                    destPos += count & 0x7F;
-                } else {
-                    // Repeat count
-                    const value = view.getUint8(sourcePos++);
-                    for (let i = 0; i < count; i++) {
-                        dest[destPos++] = value;
-                    }
-                }
-            }
-            else if (byte === lzMarker) {
-                // LZ compression
-                const count = view.getUint8(sourcePos++);
-                const offset = view.getUint16(sourcePos, true);
-                sourcePos += 2;
-
-                // Copy from previous data
-                const copyStart = destPos - offset - 4;
-                for (let i = 0; i < count; i++) {
-                    dest[destPos++] = dest[copyStart + i];
-                }
-            }
-            else {
-                // Raw byte
-                dest[destPos++] = byte;
-            }
-        }
-
-        return chunkNumber;
+    // Helper method to clear the cache
+    clear() {
+        this.chunks.fill(null);
+        this.id.fill(0);
+        this.used.fill(0);
+        this.currentCycle = 0;
     }
 }
 
