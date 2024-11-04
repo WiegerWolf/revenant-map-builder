@@ -497,7 +497,7 @@ class ChunkCache {
             return null;
         }
 
-        const result =  new Uint8Array(ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT);
+        const result = new Uint8Array(ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT);
 
         // Decompress the chunk
         const resultNumber = ChunkDecompressor.decompressChunk(
@@ -959,7 +959,7 @@ class CGSResourceParser {
                 buffer.byteOffset + buffer.byteLength
             );
             console.info(`Reading file: ${filePath}`);
-            return await CGSResourceParser.parse(arrayBuffer);
+            return await CGSResourceParser.parse(arrayBuffer, filePath);
         } catch (error) {
             console.error('Error loading CGS resource file:', error);
             debugger;
@@ -967,7 +967,7 @@ class CGSResourceParser {
         }
     }
 
-    static async parse(arrayBuffer) {
+    static async parse(arrayBuffer, filePath) {
         const stream = new InputStream(arrayBuffer);
 
         // Read FileResHdr according to the C++ structure
@@ -1034,6 +1034,24 @@ class CGSResourceParser {
                 // Read bitmap header at offset
                 const bitmap = await this.readBitmap(bitmapStream, resourceData.buffer);
 
+                // Get the relative path by removing the base game directory and 'Resources' folder
+                const relativePath = filePath
+                    .split('Resources/')[1]  // Get everything after 'Resources/'
+                    .replace('.i2d', '');    // Remove the .i2d extension
+
+                // Construct the new output path
+                const outputPath = path.join(
+                    '_OUTPUT',              // Base output directory
+                    relativePath,           // Preserve the original folder structure
+                    `bitmap_${i}.bmp`       // Bitmap filename
+                );
+
+                // Ensure the output directory exists
+                await fs.mkdir(path.dirname(outputPath), { recursive: true });
+
+                // Save the bitmap
+                await BitmapDebug.saveToBMP(bitmap, outputPath);
+
                 // Sanity check matching C++ code
                 if (bitmap.width > 8192 || bitmap.height > 8192) {
                     throw new Error('Corrupted bitmap list in resource');
@@ -1063,7 +1081,6 @@ class CGSResourceParser {
 
     static async readBitmap(stream, arrayBuffer) {
         const bitmap = BitmapData.readBitmap(stream, arrayBuffer);
-        await BitmapDebug.saveToBMP(bitmap, 'output.bmp');
         return bitmap;
     }
 
