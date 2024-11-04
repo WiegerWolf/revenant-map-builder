@@ -422,11 +422,11 @@ class ChunkHeader {
         this.type = data.getUint32(offset, true);      // BOOL type (compressed flag)
         this.width = data.getInt32(offset + 4, true);  // width in blocks
         this.height = data.getInt32(offset + 8, true); // height in blocks
-        
+
         // Calculate how many block offsets we have
         const numBlocks = this.width * this.height;
         this.blocks = new Array(numBlocks);
-        
+
         // Read block offsets
         for (let i = 0; i < numBlocks; i++) {
             this.blocks[i] = data.getUint32(offset + 12 + (i * 4), true); // OFFSET is typically uint32
@@ -444,10 +444,10 @@ class ChunkCache {
         this.chunks = new Array(numChunks);
         this.id = new Int32Array(numChunks);
         this.used = new Int32Array(numChunks);
-        
+
         // Pre-allocate chunk buffers
         this.chunkBuffer = new Uint8Array(numChunks * ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT);
-        
+
         // Initialize chunks to point to their respective areas in chunkBuffer
         for (let i = 0; i < numChunks; i++) {
             this.chunks[i] = new Uint8Array(
@@ -465,7 +465,7 @@ class ChunkCache {
 
         // First 4 bytes contain the chunk number
         const chunkNumber = new DataView(chunk.buffer).getInt32(0, true);
-        
+
         // Look for existing chunk or oldest slot
         let oldestCycle = Infinity;
         let oldestIndex = 0;
@@ -475,7 +475,7 @@ class ChunkCache {
                 this.used[i] = this.currentcycle;
                 return this.chunks[i];
             }
-            
+
             if (this.used[i] < oldestCycle) {
                 oldestCycle = this.used[i];
                 oldestIndex = i;
@@ -494,9 +494,20 @@ class ChunkCache {
     }
 
     decompressChunk(source, dest, clearType) {
-        const view = new DataView(source.buffer);
+        // First 4 bytes are the chunk number
+        const view = new DataView(source.buffer, source.byteOffset);
         const chunkNumber = view.getInt32(0, true);
-        let sourcePos = 4; // Skip chunk number
+
+        // Skip chunk number (4 bytes) to get to the actual data
+        const sourceData = new Uint8Array(source.buffer, source.byteOffset + 4);
+
+        // Get compression markers (2 bytes after chunk number)
+        const rleMarker = sourceData[0];
+        const lzMarker = sourceData[1];
+
+        // Start reading data after the markers
+        let sourcePos = 2;
+        let destPos = 0;
 
         // Clear destination based on type
         if (clearType === 1) {
@@ -505,20 +516,14 @@ class ChunkCache {
             dest.fill(0xFF);
         }
 
-        // Get RLE markers
-        const rleMarker = view.getUint8(sourcePos);
-        const lzMarker = view.getUint8(sourcePos + 1);
-        sourcePos += 2;
-
-        let destPos = 0;
-        
+        // Now we can start decompression...
         while (destPos < ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT) {
-            const byte = view.getUint8(sourcePos++);
-            
+            const byte = sourceData[sourcePos++];
+
             if (byte === rleMarker) {
                 // RLE compression
                 let count = view.getUint8(sourcePos++);
-                
+
                 if (count & 0x80) {
                     // Skip count
                     destPos += count & 0x7F;
@@ -593,24 +598,24 @@ class BitmapData {
                 // Handle compressed (chunked) data
                 if (bitmap.flags.bm_chunked) {
                     const cache = new ChunkCache(64); // Adjust cache size as needed
-                    
+
                     // Process main bitmap chunks
                     const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
                     bitmap.data = new Uint8Array(bitmap.width * bitmap.height);
-        
+
                     for (let y = 0; y < mainHeader.height; y++) {
                         for (let x = 0; x < mainHeader.width; x++) {
                             const blockOffset = mainHeader.blocks[y * mainHeader.width + x];
                             if (blockOffset) {
                                 const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset);
                                 const decompressed = cache.addChunk(chunkData, 1);
-                                
+
                                 // Copy chunk to appropriate position in bitmap
                                 this.copyChunkToBitmap(bitmap.data, decompressed, x, y, bitmap.width);
                             }
                         }
                     }
-        
+
                     // Similar process for zbuffer and normal if present
                     // ...
                 } else {
@@ -695,7 +700,7 @@ class BitmapData {
     static copyChunkToBitmap(bitmap, chunk, chunkX, chunkY, bitmapWidth) {
         const CHUNK_WIDTH = 64;
         const CHUNK_HEIGHT = 64;
-        
+
         for (let y = 0; y < CHUNK_HEIGHT; y++) {
             const srcOffset = y * CHUNK_WIDTH;
             const dstOffset = ((chunkY * CHUNK_HEIGHT + y) * bitmapWidth) + (chunkX * CHUNK_WIDTH);
