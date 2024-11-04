@@ -415,21 +415,16 @@ class DrawModeFlags {
 }
 
 class ChunkHeader {
-    static CHUNK_WIDTH = 64;
-    static CHUNK_HEIGHT = 64;
+    constructor(dataView, offset = 0) {
+        this.type = dataView.getUint32(offset, true);
+        this.width = dataView.getInt32(offset + 4, true);
+        this.height = dataView.getInt32(offset + 8, true);
 
-    constructor(data, offset = 0) {
-        this.type = data.getUint32(offset, true);      // BOOL type (compressed flag)
-        this.width = data.getInt32(offset + 4, true);  // width in blocks
-        this.height = data.getInt32(offset + 8, true); // height in blocks
-
-        // Calculate how many block offsets we have
+        // Read the block offsets array
         const numBlocks = this.width * this.height;
         this.blocks = new Array(numBlocks);
-
-        // Read block offsets
         for (let i = 0; i < numBlocks; i++) {
-            this.blocks[i] = data.getUint32(offset + 12 + (i * 4), true); // OFFSET is typically uint32
+            this.blocks[i] = dataView.getUint32(offset + 12 + (i * 4), true);
         }
     }
 }
@@ -595,32 +590,49 @@ class BitmapData {
         // Handle pixel data
         if (!bitmap.flags.bm_nobitmap) {
             if (bitmap.flags.bm_compressed) {
-                // Handle compressed (chunked) data
                 if (bitmap.flags.bm_chunked) {
-                    const cache = new ChunkCache(64); // Adjust cache size as needed
+                    // The bitmap data directly points to a ChunkHeader
+                    const header = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
+                    console.log('Chunk header:', header);
 
-                    // Process main bitmap chunks
-                    const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
+                    // Allocate the final bitmap data
                     bitmap.data = new Uint8Array(bitmap.width * bitmap.height);
 
-                    for (let y = 0; y < mainHeader.height; y++) {
-                        for (let x = 0; x < mainHeader.width; x++) {
-                            const blockOffset = mainHeader.blocks[y * mainHeader.width + x];
+                    const cache = new ChunkCache(64);
+
+                    // Process each block
+                    for (let y = 0; y < header.height; y++) {
+                        for (let x = 0; x < header.width; x++) {
+                            const blockOffset = header.blocks[y * header.width + x];
                             if (blockOffset) {
+                                // blockOffset is relative to baseOffset
                                 const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset);
                                 const decompressed = cache.addChunk(chunkData, 1);
 
-                                // Copy chunk to appropriate position in bitmap
-                                this.copyChunkToBitmap(bitmap.data, decompressed, x, y, bitmap.width);
+                                // Calculate where this chunk goes in the final bitmap
+                                const destX = x * ChunkCache.CHUNK_WIDTH;
+                                const destY = y * ChunkCache.CHUNK_HEIGHT;
+
+                                // Copy the decompressed chunk to the right position
+                                for (let cy = 0; cy < ChunkCache.CHUNK_HEIGHT; cy++) {
+                                    const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
+                                    const dstOffset = ((destY + cy) * bitmap.width) + destX;
+
+                                    // Make sure we don't copy beyond bitmap boundaries
+                                    const copyWidth = Math.min(
+                                        ChunkCache.CHUNK_WIDTH,
+                                        bitmap.width - destX
+                                    );
+                                    if (dstOffset + copyWidth <= bitmap.data.length) {
+                                        bitmap.data.set(
+                                            decompressed.subarray(srcOffset, srcOffset + copyWidth),
+                                            dstOffset
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
-
-                    // Similar process for zbuffer and normal if present
-                    // ...
-                } else {
-                    console.warn('Unknown compression format');
-                    debugger;
                 }
             } else {
                 // Create a view into the pixel data based on the bit depth
