@@ -473,18 +473,18 @@ class BitmapData {
         // Handle palette data if present
         if (bitmap.palettesize > 0 && bitmap.palette > 0) {
             const paletteOffset = baseOffset + bitmap.palette;
-            const numEntries = bitmap.palettesize / (2 + 4); // Each entry is 2 bytes for colors + 4 bytes for rgbcolors
+            const expectedSize = (256 * 2) + (256 * 4); // 256 * (2 bytes for colors + 4 bytes for rgbcolors)
 
-            // Validate that numEntries is a whole number
-            if (numEntries !== Math.floor(numEntries)) {
-                console.warn(`Invalid palette size: ${bitmap.palettesize} bytes is not divisible by 6 (2+4 bytes per entry)`);
+            // Validate palette size
+            if (bitmap.palettesize !== expectedSize) {
+                console.warn(`Unexpected palette size: ${bitmap.palettesize} bytes (expected ${expectedSize} bytes)`);
             }
 
             // Validate that the palette data fits within the buffer
-            if (paletteOffset + bitmap.palettesize <= arrayBuffer.byteLength) {
+            if (paletteOffset + expectedSize <= arrayBuffer.byteLength) {
                 bitmap.palette = {
-                    colors: new Uint16Array(arrayBuffer, paletteOffset, numEntries),
-                    rgbcolors: new Uint32Array(arrayBuffer, paletteOffset + (numEntries * 2), numEntries)
+                    colors: new Uint16Array(arrayBuffer, paletteOffset, 256),      // 256 WORD entries
+                    rgbcolors: new Uint32Array(arrayBuffer, paletteOffset + 512, 256)  // 256 DWORD entries, offset by 256 * 2 bytes
                 };
             } else {
                 console.warn('Palette data extends beyond buffer bounds');
