@@ -534,111 +534,6 @@ class BitmapData {
 }
 
 class BitmapDebug {
-    static async saveToPNG(bitmap, outputPath) {
-        // PNG header and IHDR chunk constants
-        const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-        const IHDR_LENGTH = Buffer.from([0x00, 0x00, 0x00, 0x0D]);
-        const IHDR_TYPE = Buffer.from([0x49, 0x48, 0x44, 0x52]);
-        const BIT_DEPTH = 8;
-        const COLOR_TYPE = 2; // RGB
-        const COMPRESSION = 0;
-        const FILTER = 0;
-        const INTERLACE = 0;
-
-        // Create IHDR chunk
-        const width = Buffer.alloc(4);
-        width.writeUInt32BE(bitmap.width);
-        const height = Buffer.alloc(4);
-        height.writeUInt32BE(bitmap.height);
-
-        const ihdrData = Buffer.concat([
-            width,
-            height,
-            Buffer.from([BIT_DEPTH, COLOR_TYPE, COMPRESSION, FILTER, INTERLACE])
-        ]);
-
-        // Calculate CRC32 for IHDR
-        const ihdrCrc = calculateCRC32(Buffer.concat([IHDR_TYPE, ihdrData]));
-        const ihdrCrcBuffer = Buffer.alloc(4);
-        ihdrCrcBuffer.writeInt32BE(ihdrCrc);
-
-        // Create IDAT chunk (image data)
-        const rawData = Buffer.alloc(bitmap.width * bitmap.height * 3);
-        let pos = 0;
-
-        // Convert bitmap data to RGB format
-        for (let y = 0; y < bitmap.height; y++) {
-            for (let x = 0; x < bitmap.width; x++) {
-                let r, g, b;
-
-                if (bitmap.flags.bm_15bit) {
-                    const pixel = bitmap.data16[y * bitmap.width + x];
-                    r = ((pixel & 0x7C00) >> 10) << 3;
-                    g = ((pixel & 0x03E0) >> 5) << 3;
-                    b = (pixel & 0x001F) << 3;
-                } else if (bitmap.flags.bm_16bit) {
-                    const pixel = bitmap.data16[y * bitmap.width + x];
-                    r = ((pixel & 0xF800) >> 11) << 3;
-                    g = ((pixel & 0x07E0) >> 5) << 2;
-                    b = (pixel & 0x001F) << 3;
-                } else if (bitmap.flags.bm_24bit) {
-                    const offset = (y * bitmap.width + x) * 3;
-                    r = bitmap.data24[offset + 2];
-                    g = bitmap.data24[offset + 1];
-                    b = bitmap.data24[offset];
-                } else if (bitmap.flags.bm_8bit && bitmap.paletteData) {
-                    const paletteIndex = bitmap.data8[y * bitmap.width + x];
-                    const rgbColor = bitmap.paletteData.rgbcolors[paletteIndex];
-                    r = (rgbColor >> 16) & 0xFF;
-                    g = (rgbColor >> 8) & 0xFF;
-                    b = rgbColor & 0xFF;
-                }
-
-                rawData[pos++] = r;
-                rawData[pos++] = g;
-                rawData[pos++] = b;
-            }
-        }
-
-        // Compress the data using zlib
-        const zlib = require('zlib');
-        const compressedData = zlib.deflateSync(rawData);
-
-        // Create IDAT chunk
-        const idatLength = Buffer.alloc(4);
-        idatLength.writeUInt32BE(compressedData.length);
-        const idatType = Buffer.from([0x49, 0x44, 0x41, 0x54]);
-        const idatCrc = calculateCRC32(Buffer.concat([idatType, compressedData]));
-        const idatCrcBuffer = Buffer.alloc(4);
-        idatCrcBuffer.writeInt32BE(idatCrc);
-
-        // Create IEND chunk
-        const iendLength = Buffer.from([0x00, 0x00, 0x00, 0x00]);
-        const iendType = Buffer.from([0x49, 0x45, 0x4E, 0x44]);
-        const iendCrc = calculateCRC32(iendType);
-        const iendCrcBuffer = Buffer.alloc(4);
-        iendCrcBuffer.writeInt32BE(iendCrc);
-
-        // Combine all chunks
-        const pngFile = Buffer.concat([
-            PNG_SIGNATURE,
-            IHDR_LENGTH,
-            IHDR_TYPE,
-            ihdrData,
-            ihdrCrcBuffer,
-            idatLength,
-            idatType,
-            compressedData,
-            idatCrcBuffer,
-            iendLength,
-            iendType,
-            iendCrcBuffer
-        ]);
-
-        // Write to file
-        await fs.writeFile(outputPath, pngFile);
-    }
-
     static async saveToBMP(bitmap, outputPath) {
         const headerSize = 14;               // BMP header size
         const infoSize = 40;                // DIB header size
@@ -679,33 +574,34 @@ class BitmapDebug {
             for (let x = 0; x < bitmap.width; x++) {
                 let r, g, b;
 
-                if (bitmap.flags.bm_8bit && bitmap.paletteData) {
-                    const paletteIndex = bitmap.data8[y * bitmap.width + x];
-                    const rgbColor = bitmap.paletteData.rgbcolors[paletteIndex];
+                if (bitmap.flags.bm_8bit && bitmap.palette) {
+                    const paletteIndex = bitmap.data[y * bitmap.width + x];
+                    const rgbColor = bitmap.palette.rgbcolors[paletteIndex];
                     r = (rgbColor >> 16) & 0xFF;
                     g = (rgbColor >> 8) & 0xFF;
                     b = rgbColor & 0xFF;
                 }
                 else if (bitmap.flags.bm_15bit) {
-                    const pixel = bitmap.data16[y * bitmap.width + x];
+                    const pixel = bitmap.data[y * bitmap.width + x];
                     r = ((pixel & 0x7C00) >> 10) << 3;
                     g = ((pixel & 0x03E0) >> 5) << 3;
                     b = (pixel & 0x001F) << 3;
                 }
                 else if (bitmap.flags.bm_16bit) {
-                    const pixel = bitmap.data16[y * bitmap.width + x];
+                    const pixel = bitmap.data[y * bitmap.width + x];
                     r = ((pixel & 0xF800) >> 11) << 3;
                     g = ((pixel & 0x07E0) >> 5) << 2;
                     b = (pixel & 0x001F) << 3;
                 }
                 else if (bitmap.flags.bm_24bit) {
                     const pixelOffset = (y * bitmap.width + x) * 3;
-                    b = bitmap.data24[pixelOffset];
-                    g = bitmap.data24[pixelOffset + 1];
-                    r = bitmap.data24[pixelOffset + 2];
+                    // RGBTRIPLE structure is stored as BGR
+                    b = bitmap.data[pixelOffset];
+                    g = bitmap.data[pixelOffset + 1];
+                    r = bitmap.data[pixelOffset + 2];
                 }
                 else if (bitmap.flags.bm_32bit) {
-                    const pixel = bitmap.data32[y * bitmap.width + x];
+                    const pixel = bitmap.data[y * bitmap.width + x];
                     r = (pixel >> 16) & 0xFF;
                     g = (pixel >> 8) & 0xFF;
                     b = pixel & 0xFF;
