@@ -416,15 +416,24 @@ class DrawModeFlags {
 
 class ChunkHeader {
     constructor(dataView, offset = 0) {
-        this.type = dataView.getUint32(offset, true);
-        this.width = dataView.getInt32(offset + 4, true);
-        this.height = dataView.getInt32(offset + 8, true);
+        this.type = dataView.getUint32(offset, true);      // Compressed flag
+        this.width = dataView.getInt32(offset + 4, true);  // Width in blocks
+        this.height = dataView.getInt32(offset + 8, true); // Height in blocks
+
+        // Validate dimensions
+        if (this.width <= 0 || this.height <= 0 ||
+            this.width > 128 || this.height > 128) {
+            throw new Error('Invalid chunk header dimensions');
+        }
 
         // Read the block offsets array
         const numBlocks = this.width * this.height;
         this.blocks = new Array(numBlocks);
+
+        // Each block offset is a 32-bit value
+        const blockOffset = offset + 12; // Skip header fields
         for (let i = 0; i < numBlocks; i++) {
-            this.blocks[i] = dataView.getUint32(offset + 12 + (i * 4), true);
+            this.blocks[i] = dataView.getUint32(blockOffset + (i * 4), true);
         }
     }
 }
@@ -592,8 +601,8 @@ class BitmapData {
             if (bitmap.flags.bm_compressed) {
                 if (bitmap.flags.bm_chunked) {
                     // The bitmap data directly points to a ChunkHeader
-                    const header = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
-                    console.log('Chunk header:', header);
+                    const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
+                    console.log('Chunk header:', mainHeader);
 
                     // Allocate the final bitmap data
                     bitmap.data = new Uint8Array(bitmap.width * bitmap.height);
@@ -601,34 +610,35 @@ class BitmapData {
                     const cache = new ChunkCache(64);
 
                     // Process each block
-                    for (let y = 0; y < header.height; y++) {
-                        for (let x = 0; x < header.width; x++) {
-                            const blockOffset = header.blocks[y * header.width + x];
+                    for (let y = 0; y < mainHeader.height; y++) {
+                        for (let x = 0; x < mainHeader.width; x++) {
+                            const blockOffset = mainHeader.blocks[y * mainHeader.width + x];
                             if (blockOffset) {
-                                // blockOffset is relative to baseOffset
+                                // blockOffset is relative to the start of the bitmap data
                                 const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset);
                                 const decompressed = cache.addChunk(chunkData, 1);
 
-                                // Calculate where this chunk goes in the final bitmap
+                                // Copy the decompressed chunk to the right position
                                 const destX = x * ChunkCache.CHUNK_WIDTH;
                                 const destY = y * ChunkCache.CHUNK_HEIGHT;
 
-                                // Copy the decompressed chunk to the right position
-                                for (let cy = 0; cy < ChunkCache.CHUNK_HEIGHT; cy++) {
+                                // Make sure we don't copy beyond bitmap boundaries
+                                const copyWidth = Math.min(
+                                    ChunkCache.CHUNK_WIDTH,
+                                    bitmap.width - destX
+                                );
+                                const copyHeight = Math.min(
+                                    ChunkCache.CHUNK_HEIGHT,
+                                    bitmap.height - destY
+                                );
+
+                                for (let cy = 0; cy < copyHeight; cy++) {
                                     const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
                                     const dstOffset = ((destY + cy) * bitmap.width) + destX;
-
-                                    // Make sure we don't copy beyond bitmap boundaries
-                                    const copyWidth = Math.min(
-                                        ChunkCache.CHUNK_WIDTH,
-                                        bitmap.width - destX
+                                    bitmap.data.set(
+                                        decompressed.subarray(srcOffset, srcOffset + copyWidth),
+                                        dstOffset
                                     );
-                                    if (dstOffset + copyWidth <= bitmap.data.length) {
-                                        bitmap.data.set(
-                                            decompressed.subarray(srcOffset, srcOffset + copyWidth),
-                                            dstOffset
-                                        );
-                                    }
                                 }
                             }
                         }
