@@ -273,91 +273,96 @@ class BitmapData {
     static BM_CHUNKED = 0x0400;
 
     static readBitmap(stream, arrayBuffer) {
+        // Create a bitmap object matching TBitmapData structure
         const bitmap = {
-            width: stream.readInt16(),       // int width
-            height: stream.readInt16(),      // int height
-            regx: stream.readInt16(),        // int regx (registration point x)
-            regy: stream.readInt16(),        // int regy (registration point y)
+            width: stream.readInt32(),       // int width
+            height: stream.readInt32(),      // int height
+            regx: stream.readInt32(),        // int regx
+            regy: stream.readInt32(),        // int regy
             flags: stream.readUint32(),      // DWORD flags
-            drawmode: stream.readUint32(),   // DWORD drawmode (default drawing mode)
-            keycolor: stream.readUint32(),   // DWORD keycolor (transparent color)
+            drawmode: stream.readUint32(),   // DWORD drawmode
+            keycolor: stream.readUint32(),   // DWORD keycolor
             aliassize: stream.readUint32(),  // DWORD aliassize
             alias: stream.readUint32(),      // OFFSET alias
             alphasize: stream.readUint32(),  // DWORD alphasize
             alpha: stream.readUint32(),      // OFFSET alpha
-            zbuffersize: stream.readUint32(),// DWORD zbuffersize
+            zbuffersize: stream.readUint32(), // DWORD zbuffersize
             zbuffer: stream.readUint32(),    // OFFSET zbuffer
             normalsize: stream.readUint32(), // DWORD normalsize
             normal: stream.readUint32(),     // OFFSET normal
-            palettesize: stream.readUint32(),// DWORD palettesize
-            palette: null,                   // Will be set if BM_8BIT
+            palettesize: stream.readUint32(), // DWORD palettesize
+            palette: stream.readUint32(),    // OFFSET palette
             datasize: stream.readUint32(),   // DWORD datasize
-            data: null                       // Will hold actual bitmap data
         };
 
-        // Sanity check matching C++ code
+        // Sanity check
         if (bitmap.width > 8192 || bitmap.height > 8192) {
             throw new Error('Corrupted bitmap dimensions');
         }
 
-        // Read palette if 8-bit (BM_8BIT flag)
+        const baseOffset = stream.getPos();
+
+        // Create data views based on flags
         if (bitmap.flags & this.BM_8BIT) {
-            bitmap.palette = new Array(256);
-            for (let i = 0; i < 256; i++) {
-                bitmap.palette[i] = {
-                    color: stream.readUint16(),    // WORD colors[256]
-                    rgbcolor: stream.readUint32()  // DWORD rgbcolors[256]
-                };
-            }
+            bitmap.data8 = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+        } else if (bitmap.flags & (this.BM_15BIT | this.BM_16BIT)) {
+            bitmap.data16 = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
+        } else if (bitmap.flags & this.BM_24BIT) {
+            // For 24-bit, create a view that we can read as RGB triples
+            bitmap.data24 = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+        } else if (bitmap.flags & this.BM_32BIT) {
+            bitmap.data32 = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
         }
 
-        // Calculate data size based on bitmap format
-        let bytesPerPixel;
-        switch (bitmap.flags & (this.BM_8BIT | this.BM_15BIT | this.BM_16BIT | this.BM_24BIT | this.BM_32BIT)) {
-            case this.BM_8BIT:
-                bytesPerPixel = 1;
-                break;
-            case this.BM_15BIT:
-            case this.BM_16BIT:
-                bytesPerPixel = 2;
-                break;
-            case this.BM_24BIT:
-                bytesPerPixel = 3;
-                break;
-            case this.BM_32BIT:
-                bytesPerPixel = 4;
-                break;
-            default:
-                throw new Error('Invalid bitmap format');
+        // Read palette if present (using the offset)
+        if (bitmap.flags & this.BM_8BIT && bitmap.palette) {
+            const paletteOffset = baseOffset + bitmap.palette;
+            bitmap.paletteData = {
+                colors: new Uint16Array(arrayBuffer, paletteOffset, 256),
+                rgbcolors: new Uint32Array(arrayBuffer, paletteOffset + 512, 256) // 512 = 256 * sizeof(WORD)
+            };
         }
 
-        const dataSize = bitmap.width * bitmap.height * bytesPerPixel;
-        
-        // Read bitmap data
-        const dataOffset = stream.getPos();
-        bitmap.data = new Uint8Array(arrayBuffer, dataOffset, dataSize);
-        stream.skip(dataSize);
-
-        // Read additional buffers if present
+        // Set up other buffer views using their offsets
         if (bitmap.flags & this.BM_ZBUFFER && bitmap.zbuffersize > 0) {
-            bitmap.zbufferData = new Uint16Array(arrayBuffer, 
-                dataOffset + bitmap.zbuffer, bitmap.zbuffersize / 2);
+            bitmap.zbufferData = new Uint16Array(arrayBuffer,
+                baseOffset + bitmap.zbuffer,
+                bitmap.zbuffersize / 2);
         }
 
         if (bitmap.flags & this.BM_NORMALS && bitmap.normalsize > 0) {
-            bitmap.normalData = new Uint16Array(arrayBuffer, 
-                dataOffset + bitmap.normal, bitmap.normalsize / 2);
+            bitmap.normalData = new Uint16Array(arrayBuffer,
+                baseOffset + bitmap.normal,
+                bitmap.normalsize / 2);
         }
 
         if (bitmap.flags & this.BM_ALPHA && bitmap.alphasize > 0) {
-            bitmap.alphaData = new Uint8Array(arrayBuffer, 
-                dataOffset + bitmap.alpha, bitmap.alphasize);
+            bitmap.alphaData = new Uint8Array(arrayBuffer,
+                baseOffset + bitmap.alpha,
+                bitmap.alphasize);
         }
 
         if (bitmap.flags & this.BM_ALIAS && bitmap.aliassize > 0) {
-            bitmap.aliasData = new Uint8Array(arrayBuffer, 
-                dataOffset + bitmap.alias, bitmap.aliassize);
+            bitmap.aliasData = new Uint8Array(arrayBuffer,
+                baseOffset + bitmap.alias,
+                bitmap.aliassize);
         }
+
+        // Helper methods to access data in the correct format
+        bitmap.getPixel = function (x, y) {
+            const offset = y * this.width + x;
+            if (this.flags & this.BM_8BIT) return this.data8[offset];
+            if (this.flags & (this.BM_15BIT | this.BM_16BIT)) return this.data16[offset];
+            if (this.flags & this.BM_24BIT) {
+                const byteOffset = offset * 3;
+                return {
+                    blue: this.data24[byteOffset],
+                    green: this.data24[byteOffset + 1],
+                    red: this.data24[byteOffset + 2]
+                };
+            }
+            if (this.flags & this.BM_32BIT) return this.data32[offset];
+        };
 
         return bitmap;
     }
