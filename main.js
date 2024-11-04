@@ -326,22 +326,6 @@ class BitmapFlags {
 }
 
 class BitmapData {
-    // Bitmap Flags
-    static BM_8BIT = 0x0001;      // Bitmap data is 8 bit
-    static BM_15BIT = 0x0002;     // Bitmap data is 15 bit
-    static BM_16BIT = 0x0004;     // Bitmap data is 16 bit
-    static BM_24BIT = 0x0008;     // Bitmap data is 24 bit
-    static BM_32BIT = 0x0010;     // Bitmap data is 32 bit
-    static BM_ZBUFFER = 0x0020;   // Bitmap has ZBuffer
-    static BM_NORMALS = 0x0040;   // Bitmap has Normal Buffer
-    static BM_ALIAS = 0x0080;     // Bitmap has Alias Buffer
-    static BM_ALPHA = 0x0100;     // Bitmap has Alpha Buffer
-    static BM_PALETTE = 0x0200;   // Bitmap has 256 Color SPalette Structure
-    static BM_REGPOINT = 0x0400;  // Bitmap has registration point
-    static BM_NOBITMAP = 0x0800;  // Bitmap has no pixel data
-    static BM_5BITPAL = 0x1000;   // Bitmap palette is 5 bit for r,g,b instead of 8 bit
-    static BM_COMPRESSED = 0x4000; // Bitmap is compressed
-    static BM_CHUNKED = 0x8000;   // Bitmap is chunked out
 
     static readBitmap(stream, arrayBuffer) {
         const bitmap = {
@@ -381,6 +365,7 @@ class BitmapData {
             if (bitmap.flags.bm_compressed) {
                 // TODO: Handle compressed data
                 console.warn('Compressed bitmap data not yet implemented');
+                debugger;
             } else {
                 const bytesPerPixel = bitmap.flags.getBytesPerPixel();
                 if (bitmap.flags.bm_8bit) {
@@ -745,12 +730,12 @@ class CGSResourceParser {
                 }
 
                 // Convert 15-bit to 16-bit if necessary
-                if (bitmap.flags & this.BM_15BIT) {
+                if (bitmap.flags.bm_15bit) {
                     this.convert15to16(bitmap);
                 }
 
                 // Convert palette if necessary
-                if (bitmap.flags & this.BM_8BIT) {
+                if (bitmap.flags.bm_8bit) {
                     this.convertPal15to16(bitmap);
                 }
 
