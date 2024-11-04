@@ -200,11 +200,11 @@ class ImageryDatParser {
     static async parseImageryBody(filename, imageryHeader) {
         // The imagery body is actually stored in separate .I2D or .I3D files
         // We need to load these files using the CGSResourceParser
-    
+
         // First, determine if it's a 2D or 3D imagery based on the filename extension
         const extension = path.extname(filename).toLowerCase();
         const is3D = extension === '.i3d';
-    
+
         // Create a result object to store all imagery data
         const result = {
             filename,
@@ -212,19 +212,19 @@ class ImageryDatParser {
             is3D,
             states: []
         };
-    
+
         // For each state in the imagery header, load its corresponding resource file
         for (let i = 0; i < imageryHeader.numStates; i++) {
             const state = imageryHeader.states[i];
-            
+
             // Construct the resource filename
             // The resource files are typically stored in the Imagery directory
             const resourcePath = filename;
-    
+
             try {
                 // Load the resource file
                 const resource = await DatParser.loadResourceFile(this.gameDir, resourcePath);
-                
+
                 if (resource) {
                     // Add the loaded resource data to our state
                     result.states.push({
@@ -254,9 +254,9 @@ class ImageryDatParser {
                 });
             }
         }
-    
+
         return result;
-    }    
+    }
 }
 
 class CGSResourceParser {
@@ -292,10 +292,6 @@ class CGSResourceParser {
             hdrsize: stream.readUint32()      // DWORD hdrsize
         };
 
-        // Add compression type constants
-        const COMP_NONE = 0;  // No Compression
-        const COMP_ZIP = 1;   // ZIP implode compression
-
         // Validate magic number and version
         if (header.resmagic !== this.RESMAGIC) {
             throw new Error('Not a valid CGS resource file');
@@ -315,37 +311,56 @@ class CGSResourceParser {
         }
 
         // Read bitmap table if present
-        const bitmapTable = [];
+        let bitmapTable = null;
         if (header.topbm > 0) {
+            bitmapTable = new Array(header.topbm);
             for (let i = 0; i < header.topbm; i++) {
-                bitmapTable.push(stream.readUint32());
+                bitmapTable[i] = stream.readUint32();
             }
         }
 
-        // Read the entire resource data first, like the C++ code does
-        const resourceData = new Uint8Array(arrayBuffer, stream.getPos(), header.datasize);
+        // Read the entire resource data
+        const resourceData = new Uint8Array(header.objsize); // Allocate full objsize
+        const dataView = new Uint8Array(arrayBuffer, stream.getPos(), header.datasize);
+        resourceData.set(dataView); // Copy datasize bytes
 
-        // Create the final result buffer
-        const resultBuffer = new Uint8Array(header.objsize);
-        resultBuffer.set(resourceData);
+        // "Touch" the resource data every 2048 bytes (matching C++ behavior)
+        for (let c = 0; c < header.datasize; c += 2048) {
+            const dummy = resourceData[c];
+        }
 
-        // Read bitmaps using offsets into the resultBuffer
-        const bitmaps = [];
-        for (const offset of bitmapTable) {
-            // Create a new stream starting at the bitmap offset in the result buffer
-            const bitmapStream = new InputStream(resultBuffer.buffer);
-            bitmapStream.setPos(offset);
-            const bitmap = this.readBitmap(bitmapStream, resultBuffer.buffer);
-            bitmaps.push(bitmap);
+        // Process bitmaps if present
+        if (bitmapTable) {
+            for (let i = 0; i < header.topbm; i++) {
+                const offset = bitmapTable[i];
+                const bitmapStream = new InputStream(resourceData.buffer);
+                bitmapStream.setPos(offset);
+
+                // Read bitmap header at offset
+                const bitmap = this.readBitmap(bitmapStream, resourceData.buffer);
+
+                // Sanity check matching C++ code
+                if (bitmap.width > 8192 || bitmap.height > 8192) {
+                    throw new Error('Corrupted bitmap list in resource');
+                }
+
+                // Convert 15-bit to 16-bit if necessary
+                if (bitmap.flags & this.BM_15BIT) {
+                    this.convert15to16(bitmap);
+                }
+
+                // Convert palette if necessary
+                if (bitmap.flags & this.BM_8BIT) {
+                    this.convertPal15to16(bitmap);
+                }
+            }
         }
 
         return {
             header,
-            bitmapTable,
-            bitmaps,
-            data: resultBuffer
+            data: resourceData,
+            size: header.objsize
         };
-
     }
 
     static readBitmap(stream, arrayBuffer) {
