@@ -415,7 +415,6 @@ class DrawModeFlags {
 }
 
 class BitmapData {
-
     static readBitmap(stream, arrayBuffer) {
         const bitmap = {
             width: stream.readInt32(),
