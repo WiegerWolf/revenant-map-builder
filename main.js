@@ -470,23 +470,23 @@ class ChunkCache {
 
     constructor(megabytes) {
         // Calculate number of chunks that can fit in specified megabytes
-        this.numChunks = Math.floor((megabytes * 1024 * 1024) / 
-                                   (ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT * 3));
-        
+        this.numChunks = Math.floor((megabytes * 1024 * 1024) /
+            (ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT * 3));
+
         // Equivalent to chunks array - stores chunk data views
         this.chunks = new Array(this.numChunks).fill(null);
-        
+
         // Equivalent to id array - stores chunk numbers
         this.id = new Int32Array(this.numChunks);
-        
+
         // Equivalent to used array - stores last access cycle
         this.used = new Int32Array(this.numChunks);
-        
+
         // Pre-allocate single buffer for all chunks
         this.chunkBuffer = new Uint8Array(
             ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT * this.numChunks
         );
-        
+
         // Usage counter
         this.currentCycle = 0;
     }
@@ -497,58 +497,17 @@ class ChunkCache {
             return null;
         }
 
-        // Increment usage counter
-        this.currentCycle++;
-
-        // Get chunk number from first 4 bytes
-        const chunkView = new DataView(chunk.buffer, chunk.byteOffset);
-        const number = chunkView.getInt32(0, true);
-
-        // Initialize variables to track least recently used chunk
-        let oldest = 0x7fffffff;
-        let oldestPtr = 0;
-
-        // Loop through all chunks
-        for (let i = 0; i < this.numChunks; i++) {
-            // If we find matching chunk ID
-            if (this.id[i] === number) {
-                // Update its "last used" time
-                this.used[i] = this.currentCycle;
-                return this.chunks[i];
-            }
-
-            // Keep track of least recently used chunk
-            if (this.used[i] < oldest) {
-                oldest = this.used[i];
-                oldestPtr = i;
-            }
-        }
-
-        // Update "last used" time for slot we're about to use
-        this.used[oldestPtr] = this.currentCycle;
-
-        // Calculate buffer offset for this chunk
-        const bufferOffset = oldestPtr * ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT;
-        
-        // Create view into the buffer for this chunk
-        this.chunks[oldestPtr] = new Uint8Array(
-            this.chunkBuffer.buffer,
-            bufferOffset,
-            ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT
-        );
+        const result =  new Uint8Array(ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT);
 
         // Decompress the chunk
         const resultNumber = ChunkDecompressor.decompressChunk(
-            chunk, 
-            this.chunks[oldestPtr], 
+            chunk,
+            result,
             type
         );
 
-        // Store the chunk number
-        this.id[oldestPtr] = resultNumber;
-
         // Return pointer to decompressed chunk
-        return this.chunks[oldestPtr];
+        return result;
     }
 
     // Helper method to get a chunk's data
@@ -581,25 +540,25 @@ class ChunkDecompressor {
         // Get chunk number from first 4 bytes
         const view = new DataView(source.buffer, source.byteOffset);
         const number = view.getInt32(0, true);
-        
+
         // Get compression markers from header
         const rleMarker = source[4];
         const lzMarker = source[5];
-        
+
         // Clear destination buffer
         const clearValue = clear === 1 ? 0x00 : 0xFF;
         dest.fill(clearValue);
 
         let srcPos = 6;  // After header
         let dstPos = 0;
-        
+
         while (dstPos < ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT) {
             const byte = source[srcPos++];
-            
+
             if (byte === rleMarker) {
                 // RLE compression
                 let count = source[srcPos++];
-                
+
                 if (count & 0x80) {
                     // Skip RLE
                     count &= 0x7F;
@@ -616,7 +575,7 @@ class ChunkDecompressor {
                 const count = source[srcPos++];
                 const offset = view.getUint16(srcPos, true);
                 srcPos += 2;
-                
+
                 // Copy from earlier in the output
                 for (let i = 0; i < count; i++) {
                     dest[dstPos] = dest[dstPos - offset];
@@ -676,7 +635,16 @@ class BitmapData {
                     console.log('Chunk header:', mainHeader);
 
                     // Allocate the final bitmap data
-                    bitmap.data = new Uint8Array(bitmap.datasize);
+                    if (bitmap.flags.bm_8bit) {
+                        bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 1);
+                    } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
+                        bitmap.data = new Uint16Array(bitmap.width * bitmap.height * 1);
+                    } else if (bitmap.flags.bm_24bit) {
+                        // For 24-bit, we need to handle RGBTRIPLE structure
+                        bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 3);
+                    } else if (bitmap.flags.bm_32bit) {
+                        bitmap.data = new Uint32Array(bitmap.width * bitmap.height * 1);
+                    }
 
                     const cache = new ChunkCache(64);
 
@@ -732,6 +700,8 @@ class BitmapData {
                     bitmap.data = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
                 }
             }
+        } else {
+            console.info(`no_bitmap flag present, not reading any bitmap`)
         }
 
         // Handle palette data if present
@@ -746,10 +716,35 @@ class BitmapData {
 
             // Validate that the palette data fits within the buffer
             if (paletteOffset + expectedSize <= arrayBuffer.byteLength) {
-                bitmap.palette = {
-                    colors: new Uint16Array(arrayBuffer, paletteOffset, 256),      // 256 WORD entries
-                    rgbcolors: new Uint32Array(arrayBuffer, paletteOffset + 512, 256)  // 256 DWORD entries, offset by 256 * 2 bytes
-                };
+                // Ensure alignment
+                const alignedPaletteOffset = Math.ceil(paletteOffset / 2) * 2;
+                const alignedRGBOffset = Math.ceil((paletteOffset + 512) / 4) * 4;
+
+                try {
+                    bitmap.palette = {
+                        colors: new Uint16Array(arrayBuffer, alignedPaletteOffset, 256),
+                        rgbcolors: new Uint32Array(arrayBuffer, alignedRGBOffset, 256)
+                    };
+                } catch (e) {
+                    console.warn('Failed to create palette arrays:', e);
+
+                    // Alternative approach: create new arrays and copy data
+                    const tempBuffer = new ArrayBuffer(expectedSize);
+                    const tempColors = new Uint16Array(tempBuffer, 0, 256);
+                    const tempRGBColors = new Uint32Array(tempBuffer, 512, 256);
+
+                    // Copy data byte by byte
+                    const view = new DataView(arrayBuffer);
+                    for (let i = 0; i < 256; i++) {
+                        tempColors[i] = view.getUint16(paletteOffset + i * 2, true);
+                        tempRGBColors[i] = view.getUint32(paletteOffset + 512 + i * 4, true);
+                    }
+
+                    bitmap.palette = {
+                        colors: tempColors,
+                        rgbcolors: tempRGBColors
+                    };
+                }
             } else {
                 console.warn('Palette data extends beyond buffer bounds');
             }
@@ -758,35 +753,35 @@ class BitmapData {
         // Handle additional buffers if present and not compressed
         if (!bitmap.flags.bm_compressed) {
             if (bitmap.flags.bm_zbuffer && bitmap.zbuffersize > 0) {
-                bitmap.zbuffer = new Uint16Array(
-                    arrayBuffer,
-                    baseOffset + bitmap.zbuffer,
-                    bitmap.zbuffersize / 2
-                );
+                // bitmap.zbuffer = new Uint16Array(
+                //     arrayBuffer,
+                //     baseOffset + bitmap.zbuffer,
+                //     bitmap.zbuffersize / 2
+                // );
             }
 
             if (bitmap.flags.bm_normals && bitmap.normalsize > 0) {
-                bitmap.normal = new Uint16Array(
-                    arrayBuffer,
-                    baseOffset + bitmap.normal,
-                    bitmap.normalsize / 2
-                );
+                // bitmap.normal = new Uint16Array(
+                //     arrayBuffer,
+                //     baseOffset + bitmap.normal,
+                //     bitmap.normalsize / 2
+                // );
             }
 
             if (bitmap.flags.bm_alpha && bitmap.alphasize > 0) {
-                bitmap.alpha = new Uint8Array(
-                    arrayBuffer,
-                    baseOffset + bitmap.alpha,
-                    bitmap.alphasize
-                );
+                // bitmap.alpha = new Uint8Array(
+                //     arrayBuffer,
+                //     baseOffset + bitmap.alpha,
+                //     bitmap.alphasize
+                // );
             }
 
             if (bitmap.flags.bm_alias && bitmap.aliassize > 0) {
-                bitmap.alias = new Uint8Array(
-                    arrayBuffer,
-                    baseOffset + bitmap.alias,
-                    bitmap.aliassize
-                );
+                // bitmap.alias = new Uint8Array(
+                //     arrayBuffer,
+                //     baseOffset + bitmap.alias,
+                //     bitmap.aliassize
+                // );
             }
         }
 
@@ -824,7 +819,9 @@ class BitmapDebug {
     static async saveToBMP(bitmap, outputPath) {
         // First, let's validate the input
         if (!bitmap || !bitmap.width || !bitmap.height || !bitmap.data) {
-            throw new Error('Invalid bitmap data');
+            console.error('Invalid bitmap data');
+            debugger;
+            return;
         }
 
         const headerSize = 14;
@@ -961,6 +958,7 @@ class CGSResourceParser {
                 buffer.byteOffset,
                 buffer.byteOffset + buffer.byteLength
             );
+            console.info(`Reading file: ${filePath}`);
             return await CGSResourceParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading CGS resource file:', error);
@@ -1071,6 +1069,10 @@ class CGSResourceParser {
 
 
     static convert15to16(bitmap) {
+        if (!bitmap || !bitmap.data) {
+            console.warn('No bitmap data, nothing to convert.')
+            return;
+        }
         // Convert 15-bit color to 16-bit color
         const data = new Uint16Array(bitmap.data.buffer);
         for (let i = 0; i < data.length; i++) {
