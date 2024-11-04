@@ -631,7 +631,7 @@ class BitmapData {
                     console.log('Chunk header:', mainHeader);
 
                     // Allocate the final bitmap data
-                    bitmap.data = new Uint8Array(bitmap.width * bitmap.height);
+                    bitmap.data = new Uint8Array(bitmap.datasize);
 
                     const cache = new ChunkCache(64);
 
@@ -1876,7 +1876,6 @@ class DatParser {
 
             if (!realPath) {
                 console.warn(`Resource file not found: ${resourcePath}`);
-                debugger;
                 return null;
             }
 
