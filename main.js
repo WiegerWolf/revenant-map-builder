@@ -471,12 +471,24 @@ class BitmapData {
         }
 
         // Handle palette data if present
-        if (bitmap.flags.needsPalette()) {
+        if (bitmap.palettesize > 0 && bitmap.palette > 0) {
             const paletteOffset = baseOffset + bitmap.palette;
-            bitmap.palette = {
-                colors: new Uint16Array(arrayBuffer, paletteOffset, 256),
-                rgbcolors: new Uint32Array(arrayBuffer, paletteOffset + 512, 256)
-            };
+            const numEntries = bitmap.palettesize / (2 + 4); // Each entry is 2 bytes for colors + 4 bytes for rgbcolors
+
+            // Validate that numEntries is a whole number
+            if (numEntries !== Math.floor(numEntries)) {
+                console.warn(`Invalid palette size: ${bitmap.palettesize} bytes is not divisible by 6 (2+4 bytes per entry)`);
+            }
+
+            // Validate that the palette data fits within the buffer
+            if (paletteOffset + bitmap.palettesize <= arrayBuffer.byteLength) {
+                bitmap.palette = {
+                    colors: new Uint16Array(arrayBuffer, paletteOffset, numEntries),
+                    rgbcolors: new Uint32Array(arrayBuffer, paletteOffset + (numEntries * 2), numEntries)
+                };
+            } else {
+                console.warn('Palette data extends beyond buffer bounds');
+            }
         }
 
         // Handle additional buffers if present and not compressed
@@ -535,12 +547,16 @@ class BitmapData {
 
 class BitmapDebug {
     static async saveToBMP(bitmap, outputPath) {
-        const headerSize = 14;               // BMP header size
-        const infoSize = 40;                // DIB header size
-        const bitsPerPixel = 24;            // We'll save as 24-bit BMP
+        // First, let's validate the input
+        if (!bitmap || !bitmap.width || !bitmap.height || !bitmap.data) {
+            throw new Error('Invalid bitmap data');
+        }
+
+        const headerSize = 14;
+        const infoSize = 40;
+        const bitsPerPixel = 24;
         const bytesPerPixel = bitsPerPixel / 8;
 
-        // BMP rows must be aligned to 4-byte boundaries
         const rowSize = Math.floor((bitsPerPixel * bitmap.width + 31) / 32) * 4;
         const paddingSize = rowSize - (bitmap.width * bytesPerPixel);
         const imageSize = rowSize * bitmap.height;
@@ -548,72 +564,90 @@ class BitmapDebug {
 
         const buffer = Buffer.alloc(fileSize);
 
-        // BMP Header (14 bytes)
-        buffer.write('BM', 0);                          // Signature
-        buffer.writeUInt32LE(fileSize, 2);             // File size
-        buffer.writeUInt32LE(0, 6);                    // Reserved
-        buffer.writeUInt32LE(headerSize + infoSize, 10);// Pixel data offset
+        // Write headers...
+        buffer.write('BM', 0);
+        buffer.writeUInt32LE(fileSize, 2);
+        buffer.writeUInt32LE(0, 6);
+        buffer.writeUInt32LE(headerSize + infoSize, 10);
 
-        // DIB Header (40 bytes)
-        buffer.writeUInt32LE(infoSize, 14);            // Header size
-        buffer.writeInt32LE(bitmap.width, 18);         // Width
-        buffer.writeInt32LE(bitmap.height, 22);        // Height
-        buffer.writeUInt16LE(1, 26);                   // Planes
-        buffer.writeUInt16LE(bitsPerPixel, 28);        // Bits per pixel
-        buffer.writeUInt32LE(0, 30);                   // Compression
-        buffer.writeUInt32LE(imageSize, 34);           // Image size
-        buffer.writeInt32LE(0, 38);                    // X pixels per meter
-        buffer.writeInt32LE(0, 42);                    // Y pixels per meter
-        buffer.writeUInt32LE(0, 46);                   // Total colors
-        buffer.writeUInt32LE(0, 50);                   // Important colors
+        buffer.writeUInt32LE(infoSize, 14);
+        buffer.writeInt32LE(bitmap.width, 18);
+        buffer.writeInt32LE(bitmap.height, 22);
+        buffer.writeUInt16LE(1, 26);
+        buffer.writeUInt16LE(bitsPerPixel, 28);
+        buffer.writeUInt32LE(0, 30);
+        buffer.writeUInt32LE(imageSize, 34);
+        buffer.writeInt32LE(0, 38);
+        buffer.writeInt32LE(0, 42);
+        buffer.writeUInt32LE(0, 46);
+        buffer.writeUInt32LE(0, 50);
 
-        // Pixel data - BMP stores images bottom-up
         let offset = headerSize + infoSize;
 
+        // Pixel data writing with more defensive checks
         for (let y = bitmap.height - 1; y >= 0; y--) {
             for (let x = 0; x < bitmap.width; x++) {
-                let r, g, b;
+                let r = 0, g = 0, b = 0;
 
-                if (bitmap.flags.bm_8bit && bitmap.palette) {
-                    const paletteIndex = bitmap.data[y * bitmap.width + x];
-                    const rgbColor = bitmap.palette.rgbcolors[paletteIndex];
-                    r = (rgbColor >> 16) & 0xFF;
-                    g = (rgbColor >> 8) & 0xFF;
-                    b = rgbColor & 0xFF;
-                }
-                else if (bitmap.flags.bm_15bit) {
-                    const pixel = bitmap.data[y * bitmap.width + x];
-                    r = ((pixel & 0x7C00) >> 10) << 3;
-                    g = ((pixel & 0x03E0) >> 5) << 3;
-                    b = (pixel & 0x001F) << 3;
-                }
-                else if (bitmap.flags.bm_16bit) {
-                    const pixel = bitmap.data[y * bitmap.width + x];
-                    r = ((pixel & 0xF800) >> 11) << 3;
-                    g = ((pixel & 0x07E0) >> 5) << 2;
-                    b = (pixel & 0x001F) << 3;
-                }
-                else if (bitmap.flags.bm_24bit) {
-                    const pixelOffset = (y * bitmap.width + x) * 3;
-                    // RGBTRIPLE structure is stored as BGR
-                    b = bitmap.data[pixelOffset];
-                    g = bitmap.data[pixelOffset + 1];
-                    r = bitmap.data[pixelOffset + 2];
-                }
-                else if (bitmap.flags.bm_32bit) {
-                    const pixel = bitmap.data[y * bitmap.width + x];
-                    r = (pixel >> 16) & 0xFF;
-                    g = (pixel >> 8) & 0xFF;
-                    b = pixel & 0xFF;
+                try {
+                    if (bitmap.flags.bm_8bit && bitmap.palette) {
+                        const index = y * bitmap.width + x;
+                        if (index < bitmap.data.length) {
+                            const paletteIndex = bitmap.data[index];
+                            if (paletteIndex < 256 && bitmap.palette.rgbcolors) {
+                                const rgbColor = bitmap.palette.rgbcolors[paletteIndex];
+                                r = (rgbColor >> 16) & 0xFF;
+                                g = (rgbColor >> 8) & 0xFF;
+                                b = rgbColor & 0xFF;
+                            }
+                        }
+                    }
+                    else if (bitmap.flags.bm_15bit) {
+                        const index = y * bitmap.width + x;
+                        if (index < bitmap.data.length) {
+                            const pixel = bitmap.data[index];
+                            r = ((pixel & 0x7C00) >> 10) << 3;
+                            g = ((pixel & 0x03E0) >> 5) << 3;
+                            b = (pixel & 0x001F) << 3;
+                        }
+                    }
+                    else if (bitmap.flags.bm_16bit) {
+                        const index = y * bitmap.width + x;
+                        if (index < bitmap.data.length) {
+                            const pixel = bitmap.data[index];
+                            r = ((pixel & 0xF800) >> 11) << 3;
+                            g = ((pixel & 0x07E0) >> 5) << 2;
+                            b = (pixel & 0x001F) << 3;
+                        }
+                    }
+                    else if (bitmap.flags.bm_24bit) {
+                        const pixelOffset = (y * bitmap.width + x) * 3;
+                        if (pixelOffset + 2 < bitmap.data.length) {
+                            b = bitmap.data[pixelOffset];
+                            g = bitmap.data[pixelOffset + 1];
+                            r = bitmap.data[pixelOffset + 2];
+                        }
+                    }
+                    else if (bitmap.flags.bm_32bit) {
+                        const index = y * bitmap.width + x;
+                        if (index < bitmap.data.length) {
+                            const pixel = bitmap.data[index];
+                            r = (pixel >> 16) & 0xFF;
+                            g = (pixel >> 8) & 0xFF;
+                            b = pixel & 0xFF;
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`Error processing pixel at ${x},${y}:`, error);
+                    // Continue with default black pixel
                 }
 
-                // BMP stores pixels in BGR order
+                // Write the pixel
                 buffer[offset++] = b;
                 buffer[offset++] = g;
                 buffer[offset++] = r;
             }
 
-            // Add padding to align rows to 4-byte boundaries
             offset += paddingSize;
         }
 
