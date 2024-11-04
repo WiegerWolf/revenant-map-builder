@@ -537,6 +537,7 @@ class BitmapDebug {
         // Write to file
         await fs.writeFile(outputPath, pngFile);
     }
+    
     static async saveToBMP(bitmap, outputPath) {
         const headerSize = 14;               // BMP header size
         const infoSize = 40;                // DIB header size
