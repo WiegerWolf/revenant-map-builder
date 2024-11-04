@@ -330,6 +330,7 @@ class CGSResourceParser {
         }
 
         // Process bitmaps if present
+        let bitmaps = [];
         if (bitmapTable) {
             for (let i = 0; i < header.topbm; i++) {
                 const offset = bitmapTable[i];
@@ -353,13 +354,16 @@ class CGSResourceParser {
                 if (bitmap.flags & this.BM_8BIT) {
                     this.convertPal15to16(bitmap);
                 }
+
+                bitmaps.push(bitmap);
             }
         }
 
         return {
             header,
             data: resourceData,
-            size: header.objsize
+            size: header.objsize,
+            bitmaps
         };
     }
 
