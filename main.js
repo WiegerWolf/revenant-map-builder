@@ -259,6 +259,124 @@ class ImageryDatParser {
     }
 }
 
+class BitmapData {
+    static BM_8BIT = 0x0001;
+    static BM_15BIT = 0x0002;
+    static BM_16BIT = 0x0004;
+    static BM_24BIT = 0x0008;
+    static BM_32BIT = 0x0010;
+    static BM_ZBUFFER = 0x0020;
+    static BM_NORMALS = 0x0040;
+    static BM_ALIAS = 0x0080;
+    static BM_ALPHA = 0x0100;
+    static BM_PALETTE = 0x0200;
+    static BM_CHUNKED = 0x0400;
+
+    static readBitmap(stream, arrayBuffer) {
+        const bitmap = {
+            width: stream.readInt16(),       // int width
+            height: stream.readInt16(),      // int height
+            regx: stream.readInt16(),        // int regx (registration point x)
+            regy: stream.readInt16(),        // int regy (registration point y)
+            flags: stream.readUint32(),      // DWORD flags
+            drawmode: stream.readUint32(),   // DWORD drawmode (default drawing mode)
+            keycolor: stream.readUint32(),   // DWORD keycolor (transparent color)
+            aliassize: stream.readUint32(),  // DWORD aliassize
+            alias: stream.readUint32(),      // OFFSET alias
+            alphasize: stream.readUint32(),  // DWORD alphasize
+            alpha: stream.readUint32(),      // OFFSET alpha
+            zbuffersize: stream.readUint32(),// DWORD zbuffersize
+            zbuffer: stream.readUint32(),    // OFFSET zbuffer
+            normalsize: stream.readUint32(), // DWORD normalsize
+            normal: stream.readUint32(),     // OFFSET normal
+            palettesize: stream.readUint32(),// DWORD palettesize
+            palette: null,                   // Will be set if BM_8BIT
+            datasize: stream.readUint32(),   // DWORD datasize
+            data: null                       // Will hold actual bitmap data
+        };
+
+        // Sanity check matching C++ code
+        if (bitmap.width > 8192 || bitmap.height > 8192) {
+            throw new Error('Corrupted bitmap dimensions');
+        }
+
+        // Read palette if 8-bit (BM_8BIT flag)
+        if (bitmap.flags & this.BM_8BIT) {
+            bitmap.palette = new Array(256);
+            for (let i = 0; i < 256; i++) {
+                bitmap.palette[i] = {
+                    color: stream.readUint16(),    // WORD colors[256]
+                    rgbcolor: stream.readUint32()  // DWORD rgbcolors[256]
+                };
+            }
+        }
+
+        // Calculate data size based on bitmap format
+        let bytesPerPixel;
+        switch (bitmap.flags & (this.BM_8BIT | this.BM_15BIT | this.BM_16BIT | this.BM_24BIT | this.BM_32BIT)) {
+            case this.BM_8BIT:
+                bytesPerPixel = 1;
+                break;
+            case this.BM_15BIT:
+            case this.BM_16BIT:
+                bytesPerPixel = 2;
+                break;
+            case this.BM_24BIT:
+                bytesPerPixel = 3;
+                break;
+            case this.BM_32BIT:
+                bytesPerPixel = 4;
+                break;
+            default:
+                throw new Error('Invalid bitmap format');
+        }
+
+        const dataSize = bitmap.width * bitmap.height * bytesPerPixel;
+        
+        // Read bitmap data
+        const dataOffset = stream.getPos();
+        bitmap.data = new Uint8Array(arrayBuffer, dataOffset, dataSize);
+        stream.skip(dataSize);
+
+        // Read additional buffers if present
+        if (bitmap.flags & this.BM_ZBUFFER && bitmap.zbuffersize > 0) {
+            bitmap.zbufferData = new Uint16Array(arrayBuffer, 
+                dataOffset + bitmap.zbuffer, bitmap.zbuffersize / 2);
+        }
+
+        if (bitmap.flags & this.BM_NORMALS && bitmap.normalsize > 0) {
+            bitmap.normalData = new Uint16Array(arrayBuffer, 
+                dataOffset + bitmap.normal, bitmap.normalsize / 2);
+        }
+
+        if (bitmap.flags & this.BM_ALPHA && bitmap.alphasize > 0) {
+            bitmap.alphaData = new Uint8Array(arrayBuffer, 
+                dataOffset + bitmap.alpha, bitmap.alphasize);
+        }
+
+        if (bitmap.flags & this.BM_ALIAS && bitmap.aliassize > 0) {
+            bitmap.aliasData = new Uint8Array(arrayBuffer, 
+                dataOffset + bitmap.alias, bitmap.aliassize);
+        }
+
+        return bitmap;
+    }
+
+    static convert15to16(bitmap) {
+        if (!(bitmap.flags & this.BM_15BIT)) return;
+
+        const data = new Uint16Array(bitmap.data.buffer);
+        for (let i = 0; i < data.length; i++) {
+            const color15 = data[i];
+            const r = (color15 & 0x7C00) >> 10;
+            const g = (color15 & 0x03E0) >> 5;
+            const b = color15 & 0x001F;
+            data[i] = (r << 11) | (g << 6) | b;
+        }
+        bitmap.flags &= ~this.BM_15BIT;
+    }
+}
+
 class CGSResourceParser {
     static RESMAGIC = 0x52534743; // 'CGSR' in little-endian
     static RESVERSION = 1;
@@ -368,74 +486,7 @@ class CGSResourceParser {
     }
 
     static readBitmap(stream, arrayBuffer) {
-        // Match exact TBitmapData structure from bitmapdata.h
-        const bitmap = {
-            width: stream.readInt16(),       // int width
-            height: stream.readInt16(),      // int height
-            regx: stream.readInt16(),        // int regx (registration point x)
-            regy: stream.readInt16(),        // int regy (registration point y)
-            flags: stream.readUint32(),      // DWORD flags
-            drawmode: stream.readUint32(),   // DWORD drawmode (default drawing mode)
-            keycolor: stream.readUint32(),   // DWORD keycolor (transparent color)
-            aliassize: stream.readUint32(),  // DWORD aliassize
-            alias: stream.readUint32(),      // OFFSET alias (relative offset to alias data)
-            alphasize: stream.readUint32(),  // DWORD alphasize
-            alpha: stream.readUint32(),      // OFFSET alpha
-            zbuffersize: stream.readUint32(),// DWORD zbuffersize
-            zbuffer: stream.readUint32(),    // OFFSET zbuffer
-            normalsize: stream.readUint32(), // DWORD normalsize
-            normal: stream.readUint32(),     // OFFSET normal
-            palettesize: stream.readUint32(),// DWORD palettesize
-            palette: null,                   // Will hold SPalette structure if BM_8BIT
-            datasize: stream.readUint32(),   // DWORD datasize
-            data: null                       // Will hold actual bitmap data
-        };
-
-        // Bitmap flags from the original code
-        const BM_8BIT = 0x0001;
-        const BM_15BIT = 0x0002;
-
-        // Sanity check matching the C++ code
-        if (bitmap.width > 8192 || bitmap.height > 8192) {
-            throw new Error('Corrupted bitmap dimensions');
-        }
-
-        // Read palette if 8-bit (BM_8BIT flag)
-        if (bitmap.flags & BM_8BIT) {
-            // Match SPalette structure from the C++ code
-            bitmap.palette = new Array(256);
-            for (let i = 0; i < 256; i++) {
-                bitmap.palette[i] = {
-                    color: stream.readUint16(),    // WORD colors[256]
-                    rgbcolor: stream.readUint32()  // DWORD rgbcolors[256]
-                };
-            }
-        }
-
-        // Calculate data size based on bitmap format
-        let dataSize;
-        if (bitmap.flags & BM_8BIT) {
-            dataSize = bitmap.width * bitmap.height;       // 8-bit = 1 byte per pixel
-        } else {
-            dataSize = bitmap.width * bitmap.height * 2;   // 15/16-bit = 2 bytes per pixel
-        }
-
-        // Read raw bitmap data
-        const dataOffset = stream.getPos();
-        bitmap.data = new Uint8Array(arrayBuffer, dataOffset, dataSize);
-        stream.skip(dataSize);
-
-        // Convert 15-bit to 16-bit if necessary (matching C++ Convert15to16)
-        if (bitmap.flags & BM_15BIT) {
-            this.convert15to16(bitmap);
-        }
-
-        // Convert palette from 15-bit to 16-bit if necessary
-        if ((bitmap.flags & BM_8BIT) && (bitmap.flags & BM_15BIT)) {
-            this.convertPal15to16(bitmap);
-        }
-
-        return bitmap;
+        return BitmapData.readBitmap(stream, arrayBuffer);
     }
 
 
