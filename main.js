@@ -384,14 +384,14 @@ class DrawModeFlags {
     }
 
     hasTransparencyEffect() {
-        return this.dm_transparent || this.dm_translucent || 
-               this.dm_shutter || this.dm_alpha || 
-               this.dm_alphalighten;
+        return this.dm_transparent || this.dm_translucent ||
+            this.dm_shutter || this.dm_alpha ||
+            this.dm_alphalighten;
     }
 
     hasColorModification() {
-        return this.dm_changecolor || this.dm_changehue || 
-               this.dm_changesv;
+        return this.dm_changecolor || this.dm_changehue ||
+            this.dm_changesv;
     }
 
     isFlipped() {
@@ -399,8 +399,8 @@ class DrawModeFlags {
     }
 
     usesZBuffer() {
-        return this.dm_zmask || this.dm_zbuffer || 
-               this.dm_zstatic || !this.dm_nocheckz;
+        return this.dm_zmask || this.dm_zbuffer ||
+            this.dm_zstatic || !this.dm_nocheckz;
     }
 
     toString() {
@@ -416,6 +416,7 @@ class DrawModeFlags {
 
 class BitmapData {
     static readBitmap(stream, arrayBuffer) {
+        // Read the fixed-size header structure
         const bitmap = {
             width: stream.readInt32(),
             height: stream.readInt32(),
@@ -423,18 +424,18 @@ class BitmapData {
             regy: stream.readInt32(),
             flags: new BitmapFlags(stream.readUint32()),
             drawmode: new DrawModeFlags(stream.readUint32()),
-            keycolor: stream.readUint32(), // Color to use as Transparent color.
-            aliassize: stream.readUint32(), // Size of Alias Buffer
-            alias: stream.readUint32(), // Relative Offset to alias data.
-            alphasize: stream.readUint32(), // Size of Alpha Buffer
-            alpha: stream.readUint32(),
-            zbuffersize: stream.readUint32(), // Size of ZBuffer
-            zbuffer: stream.readUint32(),
-            normalsize: stream.readUint32(), // Size of Normal Buffer
-            normal: stream.readUint32(),
-            palettesize: stream.readUint32(), // Size of Palette
-            palette: stream.readUint32(), // Relative Offset to Palette data
-            datasize: stream.readUint32(),
+            keycolor: stream.readUint32(),      // Color to use as Transparent color
+            aliassize: stream.readUint32(),     // Size of Alias Buffer
+            alias: stream.readUint32(),         // Relative Offset to alias data
+            alphasize: stream.readUint32(),     // Size of Alpha Buffer
+            alpha: stream.readUint32(),         // Offset to alpha data
+            zbuffersize: stream.readUint32(),   // Size of ZBuffer
+            zbuffer: stream.readUint32(),       // Offset to zbuffer data
+            normalsize: stream.readUint32(),    // Size of Normal Buffer
+            normal: stream.readUint32(),        // Offset to normal data
+            palettesize: stream.readUint32(),   // Size of Palette
+            palette: stream.readUint32(),       // Relative Offset to Palette data
+            datasize: stream.readUint32(),      // Size of pixel data
         };
 
         // Sanity checks
@@ -448,67 +449,64 @@ class BitmapData {
 
         const baseOffset = stream.getPos();
 
-        // Skip data reading if NOBITMAP flag is set
+        // Handle pixel data
         if (!bitmap.flags.bm_nobitmap) {
             if (bitmap.flags.bm_compressed) {
-                // TODO: Handle compressed data
                 console.warn('Compressed bitmap data not yet implemented');
                 debugger;
             } else {
-                const bytesPerPixel = bitmap.flags.getBytesPerPixel();
+                // Create a view into the pixel data based on the bit depth
+                // This more closely matches the union structure in the C++ code
                 if (bitmap.flags.bm_8bit) {
-                    bitmap.data8 = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+                    bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
                 } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
-                    bitmap.data16 = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
+                    bitmap.data = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
                 } else if (bitmap.flags.bm_24bit) {
-                    bitmap.data24 = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+                    // For 24-bit, we need to handle RGBTRIPLE structure
+                    bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
                 } else if (bitmap.flags.bm_32bit) {
-                    bitmap.data32 = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
+                    bitmap.data = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
                 }
             }
         }
 
-        // Read additional buffers using the new flag checks
+        // Handle palette data if present
         if (bitmap.flags.needsPalette()) {
             const paletteOffset = baseOffset + bitmap.palette;
-            bitmap.paletteData = {
+            bitmap.palette = {
                 colors: new Uint16Array(arrayBuffer, paletteOffset, 256),
                 rgbcolors: new Uint32Array(arrayBuffer, paletteOffset + 512, 256)
             };
         }
 
-        // Set up additional buffers if present and not compressed
+        // Handle additional buffers if present and not compressed
         if (!bitmap.flags.bm_compressed) {
-            // Z-Buffer
             if (bitmap.flags.bm_zbuffer && bitmap.zbuffersize > 0) {
-                bitmap.zbufferData = new Uint16Array(
+                bitmap.zbuffer = new Uint16Array(
                     arrayBuffer,
                     baseOffset + bitmap.zbuffer,
                     bitmap.zbuffersize / 2
                 );
             }
 
-            // Normal Buffer
             if (bitmap.flags.bm_normals && bitmap.normalsize > 0) {
-                bitmap.normalData = new Uint16Array(
+                bitmap.normal = new Uint16Array(
                     arrayBuffer,
                     baseOffset + bitmap.normal,
                     bitmap.normalsize / 2
                 );
             }
 
-            // Alpha Buffer
             if (bitmap.flags.bm_alpha && bitmap.alphasize > 0) {
-                bitmap.alphaData = new Uint8Array(
+                bitmap.alpha = new Uint8Array(
                     arrayBuffer,
                     baseOffset + bitmap.alpha,
                     bitmap.alphasize
                 );
             }
 
-            // Alias Buffer
             if (bitmap.flags.bm_alias && bitmap.aliassize > 0) {
-                bitmap.aliasData = new Uint8Array(
+                bitmap.alias = new Uint8Array(
                     arrayBuffer,
                     baseOffset + bitmap.alias,
                     bitmap.aliassize
@@ -517,6 +515,21 @@ class BitmapData {
         }
 
         return bitmap;
+    }
+
+    // Helper method to get a pixel value
+    static getPixel(bitmap, x, y) {
+        const offset = y * bitmap.width + x;
+        if (bitmap.flags.bm_24bit) {
+            // Handle RGBTRIPLE structure
+            const byteOffset = offset * 3;
+            return {
+                b: bitmap.data[byteOffset],
+                g: bitmap.data[byteOffset + 1],
+                r: bitmap.data[byteOffset + 2]
+            };
+        }
+        return bitmap.data[offset];
     }
 }
 
@@ -631,7 +644,7 @@ class BitmapDebug {
         const infoSize = 40;                // DIB header size
         const bitsPerPixel = 24;            // We'll save as 24-bit BMP
         const bytesPerPixel = bitsPerPixel / 8;
-        
+
         // BMP rows must be aligned to 4-byte boundaries
         const rowSize = Math.floor((bitsPerPixel * bitmap.width + 31) / 32) * 4;
         const paddingSize = rowSize - (bitmap.width * bytesPerPixel);
@@ -843,6 +856,7 @@ class CGSResourceParser {
     static async readBitmap(stream, arrayBuffer) {
         const bitmap = BitmapData.readBitmap(stream, arrayBuffer);
         await BitmapDebug.saveToBMP(bitmap, 'output.bmp');
+        debugger;
         return bitmap;
     }
 
