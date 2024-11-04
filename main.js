@@ -259,6 +259,72 @@ class ImageryDatParser {
     }
 }
 
+class BitmapFlags {
+    constructor(value) {
+        // Convert number to 32-bit binary string
+        const bits = (value >>> 0).toString(2).padStart(32, '0');
+
+        // Bit depth flags
+        this.bm_8bit = !!parseInt(bits[31 - 0]);     // Bitmap data is 8 bit
+        this.bm_15bit = !!parseInt(bits[31 - 1]);    // Bitmap data is 15 bit
+        this.bm_16bit = !!parseInt(bits[31 - 2]);    // Bitmap data is 16 bit
+        this.bm_24bit = !!parseInt(bits[31 - 3]);    // Bitmap data is 24 bit
+        this.bm_32bit = !!parseInt(bits[31 - 4]);    // Bitmap data is 32 bit
+
+        // Buffer flags
+        this.bm_zbuffer = !!parseInt(bits[31 - 5]);  // Bitmap has ZBuffer
+        this.bm_normals = !!parseInt(bits[31 - 6]);  // Bitmap has Normal Buffer
+        this.bm_alias = !!parseInt(bits[31 - 7]);    // Bitmap has Alias Buffer
+        this.bm_alpha = !!parseInt(bits[31 - 8]);    // Bitmap has Alpha Buffer
+        this.bm_palette = !!parseInt(bits[31 - 9]);  // Bitmap has 256 Color SPalette Structure
+
+        // Special flags
+        this.bm_regpoint = !!parseInt(bits[31 - 10]);    // Bitmap has registration point
+        this.bm_nobitmap = !!parseInt(bits[31 - 11]);    // Bitmap has no pixel data
+        this.bm_5bitpal = !!parseInt(bits[31 - 12]);     // Bitmap palette is 5 bit for r,g,b instead of 8 bit
+        this.bm_compressed = !!parseInt(bits[31 - 14]);  // Bitmap is compressed
+        this.bm_chunked = !!parseInt(bits[31 - 15]);     // Bitmap is chunked out
+    }
+
+    // Helper methods to check bit depth
+    getBitDepth() {
+        if (this.bm_8bit) return 8;
+        if (this.bm_15bit) return 15;
+        if (this.bm_16bit) return 16;
+        if (this.bm_24bit) return 24;
+        if (this.bm_32bit) return 32;
+        return 0;
+    }
+
+    // Helper method to get bytes per pixel
+    getBytesPerPixel() {
+        if (this.bm_8bit) return 1;
+        if (this.bm_15bit || this.bm_16bit) return 2;
+        if (this.bm_24bit) return 3;
+        if (this.bm_32bit) return 4;
+        return 0;
+    }
+
+    // Helper method to check if bitmap needs palette
+    needsPalette() {
+        return this.bm_8bit && this.bm_palette;
+    }
+
+    // Helper method to check if bitmap is valid
+    isValid() {
+        // Check that only one bit depth flag is set
+        const bitDepthFlags = [
+            this.bm_8bit,
+            this.bm_15bit,
+            this.bm_16bit,
+            this.bm_24bit,
+            this.bm_32bit
+        ].filter(flag => flag).length;
+
+        return bitDepthFlags === 1 || this.bm_nobitmap;
+    }
+}
+
 class BitmapData {
     // Bitmap Flags
     static BM_8BIT = 0x0001;      // Bitmap data is 8 bit
@@ -283,7 +349,7 @@ class BitmapData {
             height: stream.readInt32(),
             regx: stream.readInt32(),
             regy: stream.readInt32(),
-            flags: stream.readUint32(),
+            flags: new BitmapFlags(stream.readUint32()),
             drawmode: stream.readUint32(),
             keycolor: stream.readUint32(),
             aliassize: stream.readUint32(),
@@ -299,38 +365,38 @@ class BitmapData {
             datasize: stream.readUint32(),
         };
 
-        // Sanity check
+        // Sanity checks
         if (bitmap.width > 8192 || bitmap.height > 8192) {
             throw new Error('Corrupted bitmap dimensions');
+        }
+
+        if (!bitmap.flags.isValid()) {
+            throw new Error('Invalid bitmap flags configuration');
         }
 
         const baseOffset = stream.getPos();
 
         // Skip data reading if NOBITMAP flag is set
-        if (!(bitmap.flags & this.BM_NOBITMAP)) {
-            // Handle compressed data if needed
-            if (bitmap.flags & this.BM_COMPRESSED) {
-                // TODO: Implement decompression
+        if (!bitmap.flags.bm_nobitmap) {
+            if (bitmap.flags.bm_compressed) {
+                // TODO: Handle compressed data
                 console.warn('Compressed bitmap data not yet implemented');
-                debugger;
             } else {
-                // Create appropriate data view based on bit depth
-                if (bitmap.flags & this.BM_8BIT) {
+                const bytesPerPixel = bitmap.flags.getBytesPerPixel();
+                if (bitmap.flags.bm_8bit) {
                     bitmap.data8 = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
-                } else if (bitmap.flags & this.BM_15BIT) {
+                } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
                     bitmap.data16 = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
-                } else if (bitmap.flags & this.BM_16BIT) {
-                    bitmap.data16 = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
-                } else if (bitmap.flags & this.BM_24BIT) {
+                } else if (bitmap.flags.bm_24bit) {
                     bitmap.data24 = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
-                } else if (bitmap.flags & this.BM_32BIT) {
+                } else if (bitmap.flags.bm_32bit) {
                     bitmap.data32 = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
                 }
             }
         }
 
-        // Read palette if present and not compressed
-        if ((bitmap.flags & this.BM_PALETTE) && !(bitmap.flags & this.BM_COMPRESSED)) {
+        // Read additional buffers using the new flag checks
+        if (bitmap.flags.needsPalette()) {
             const paletteOffset = baseOffset + bitmap.palette;
             bitmap.paletteData = {
                 colors: new Uint16Array(arrayBuffer, paletteOffset, 256),
@@ -339,29 +405,41 @@ class BitmapData {
         }
 
         // Set up additional buffers if present and not compressed
-        if (!(bitmap.flags & this.BM_COMPRESSED)) {
-            if (bitmap.flags & this.BM_ZBUFFER && bitmap.zbuffersize > 0) {
-                bitmap.zbufferData = new Uint16Array(arrayBuffer,
+        if (!bitmap.flags.bm_compressed) {
+            // Z-Buffer
+            if (bitmap.flags.bm_zbuffer && bitmap.zbuffersize > 0) {
+                bitmap.zbufferData = new Uint16Array(
+                    arrayBuffer,
                     baseOffset + bitmap.zbuffer,
-                    bitmap.zbuffersize / 2);
+                    bitmap.zbuffersize / 2
+                );
             }
 
-            if (bitmap.flags & this.BM_NORMALS && bitmap.normalsize > 0) {
-                bitmap.normalData = new Uint16Array(arrayBuffer,
+            // Normal Buffer
+            if (bitmap.flags.bm_normals && bitmap.normalsize > 0) {
+                bitmap.normalData = new Uint16Array(
+                    arrayBuffer,
                     baseOffset + bitmap.normal,
-                    bitmap.normalsize / 2);
+                    bitmap.normalsize / 2
+                );
             }
 
-            if (bitmap.flags & this.BM_ALPHA && bitmap.alphasize > 0) {
-                bitmap.alphaData = new Uint8Array(arrayBuffer,
+            // Alpha Buffer
+            if (bitmap.flags.bm_alpha && bitmap.alphasize > 0) {
+                bitmap.alphaData = new Uint8Array(
+                    arrayBuffer,
                     baseOffset + bitmap.alpha,
-                    bitmap.alphasize);
+                    bitmap.alphasize
+                );
             }
 
-            if (bitmap.flags & this.BM_ALIAS && bitmap.aliassize > 0) {
-                bitmap.aliasData = new Uint8Array(arrayBuffer,
+            // Alias Buffer
+            if (bitmap.flags.bm_alias && bitmap.aliassize > 0) {
+                bitmap.aliasData = new Uint8Array(
+                    arrayBuffer,
                     baseOffset + bitmap.alias,
-                    bitmap.aliassize);
+                    bitmap.aliassize
+                );
             }
         }
 
