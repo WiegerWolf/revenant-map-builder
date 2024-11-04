@@ -786,7 +786,6 @@ class CGSResourceParser {
     static async readBitmap(stream, arrayBuffer) {
         const bitmap = BitmapData.readBitmap(stream, arrayBuffer);
         await BitmapDebug.saveToBMP(bitmap, 'output.bmp');
-        debugger;
         return bitmap;
     }
 
