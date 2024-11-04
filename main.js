@@ -538,7 +538,7 @@ class ChunkCache {
         );
 
         // Decompress the chunk
-        const resultNumber = this.decompressChunk(
+        const resultNumber = ChunkDecompressor.decompressChunk(
             chunk, 
             this.chunks[oldestPtr], 
             type
@@ -549,13 +549,6 @@ class ChunkCache {
 
         // Return pointer to decompressed chunk
         return this.chunks[oldestPtr];
-    }
-
-    decompressChunk(source, dest, type) {
-        // This is where the actual decompression would happen
-        // We'll need to implement this based on the compression format
-        // For now, returning the chunk number from the source
-        return new DataView(source.buffer, source.byteOffset).getInt32(0, true);
     }
 
     // Helper method to get a chunk's data
@@ -577,6 +570,65 @@ class ChunkCache {
         this.id.fill(0);
         this.used.fill(0);
         this.currentCycle = 0;
+    }
+}
+
+class ChunkDecompressor {
+    static CHUNK_WIDTH = 64;
+    static CHUNK_HEIGHT = 64;
+
+    static decompressChunk(source, dest, clear) {
+        // Get chunk number from first 4 bytes
+        const view = new DataView(source.buffer, source.byteOffset);
+        const number = view.getInt32(0, true);
+        
+        // Get compression markers from header
+        const rleMarker = source[4];
+        const lzMarker = source[5];
+        
+        // Clear destination buffer
+        const clearValue = clear === 1 ? 0x00 : 0xFF;
+        dest.fill(clearValue);
+
+        let srcPos = 6;  // After header
+        let dstPos = 0;
+        
+        while (dstPos < ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT) {
+            const byte = source[srcPos++];
+            
+            if (byte === rleMarker) {
+                // RLE compression
+                let count = source[srcPos++];
+                
+                if (count & 0x80) {
+                    // Skip RLE
+                    count &= 0x7F;
+                    dstPos += count;
+                } else {
+                    // Normal RLE
+                    const value = source[srcPos++];
+                    for (let i = 0; i < count; i++) {
+                        dest[dstPos++] = value;
+                    }
+                }
+            } else if (byte === lzMarker) {
+                // LZ compression
+                const count = source[srcPos++];
+                const offset = view.getUint16(srcPos, true);
+                srcPos += 2;
+                
+                // Copy from earlier in the output
+                for (let i = 0; i < count; i++) {
+                    dest[dstPos] = dest[dstPos - offset];
+                    dstPos++;
+                }
+            } else {
+                // Raw byte
+                dest[dstPos++] = byte;
+            }
+        }
+
+        return number;
     }
 }
 
@@ -638,7 +690,7 @@ class BitmapData {
                             }
 
                             // Process non-blank block
-                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset);
+                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset + 12);
                             const decompressed = cache.addChunk(chunkData, 1);
 
                             // Copy the decompressed chunk to the right position
