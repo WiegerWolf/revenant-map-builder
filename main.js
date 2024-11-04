@@ -415,7 +415,11 @@ class DrawModeFlags {
 }
 
 class ChunkHeader {
+    static CHUNK_WIDTH = 64;
+    static CHUNK_HEIGHT = 64;
+
     constructor(dataView, offset = 0) {
+        // Read the fixed part of the header
         this.type = dataView.getUint32(offset, true);      // Compressed flag
         this.width = dataView.getInt32(offset + 4, true);  // Width in blocks
         this.height = dataView.getInt32(offset + 8, true); // Height in blocks
@@ -423,18 +427,40 @@ class ChunkHeader {
         // Validate dimensions
         if (this.width <= 0 || this.height <= 0 ||
             this.width > 128 || this.height > 128) {
-            throw new Error('Invalid chunk header dimensions');
+            throw new Error(`Invalid chunk header dimensions: ${this.width}x${this.height}`);
         }
 
-        // Read the block offsets array
+        // The block array starts immediately after the header
+        const blockArrayOffset = offset + 12;
         const numBlocks = this.width * this.height;
-        this.blocks = new Array(numBlocks);
 
-        // Each block offset is a 32-bit value
-        const blockOffset = offset + 12; // Skip header fields
+        // Read the flexible array of block offsets
+        this.blocks = new Array(numBlocks);
         for (let i = 0; i < numBlocks; i++) {
-            this.blocks[i] = dataView.getUint32(blockOffset + (i * 4), true);
+            this.blocks[i] = dataView.getUint32(blockArrayOffset + (i * 4), true);
         }
+
+        // Calculate total header size (for debugging/verification)
+        this.headerSize = 12 + (numBlocks * 4);
+    }
+
+    // Helper method to check if a block is blank
+    isBlockBlank(blockIndex) {
+        return this.blocks[blockIndex] === 0;
+    }
+
+    // Helper method to get block index from x,y coordinates
+    getBlockIndex(x, y) {
+        if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
+            return -1;
+        }
+        return y * this.width + x;
+    }
+
+    // Helper method to get block offset from x,y coordinates
+    getBlockOffset(x, y) {
+        const index = this.getBlockIndex(x, y);
+        return index >= 0 ? this.blocks[index] : 0;
     }
 }
 
@@ -612,34 +638,37 @@ class BitmapData {
                     // Process each block
                     for (let y = 0; y < mainHeader.height; y++) {
                         for (let x = 0; x < mainHeader.width; x++) {
-                            const blockOffset = mainHeader.blocks[y * mainHeader.width + x];
-                            if (blockOffset) {
-                                // blockOffset is relative to the start of the bitmap data
-                                const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset);
-                                const decompressed = cache.addChunk(chunkData, 1);
+                            const blockOffset = mainHeader.getBlockOffset(x, y);
+                            if (blockOffset === 0) {
+                                // This is a blank block, skip it
+                                continue;
+                            }
 
-                                // Copy the decompressed chunk to the right position
-                                const destX = x * ChunkCache.CHUNK_WIDTH;
-                                const destY = y * ChunkCache.CHUNK_HEIGHT;
+                            // Process non-blank block
+                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset);
+                            const decompressed = cache.addChunk(chunkData, 1);
 
-                                // Make sure we don't copy beyond bitmap boundaries
-                                const copyWidth = Math.min(
-                                    ChunkCache.CHUNK_WIDTH,
-                                    bitmap.width - destX
+                            // Copy the decompressed chunk to the right position
+                            const destX = x * ChunkCache.CHUNK_WIDTH;
+                            const destY = y * ChunkCache.CHUNK_HEIGHT;
+
+                            // Make sure we don't copy beyond bitmap boundaries
+                            const copyWidth = Math.min(
+                                ChunkCache.CHUNK_WIDTH,
+                                bitmap.width - destX
+                            );
+                            const copyHeight = Math.min(
+                                ChunkCache.CHUNK_HEIGHT,
+                                bitmap.height - destY
+                            );
+
+                            for (let cy = 0; cy < copyHeight; cy++) {
+                                const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
+                                const dstOffset = ((destY + cy) * bitmap.width) + destX;
+                                bitmap.data.set(
+                                    decompressed.subarray(srcOffset, srcOffset + copyWidth),
+                                    dstOffset
                                 );
-                                const copyHeight = Math.min(
-                                    ChunkCache.CHUNK_HEIGHT,
-                                    bitmap.height - destY
-                                );
-
-                                for (let cy = 0; cy < copyHeight; cy++) {
-                                    const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
-                                    const dstOffset = ((destY + cy) * bitmap.width) + destX;
-                                    bitmap.data.set(
-                                        decompressed.subarray(srcOffset, srcOffset + copyWidth),
-                                        dstOffset
-                                    );
-                                }
                             }
                         }
                     }
@@ -920,6 +949,11 @@ class CGSResourceParser {
 
         if (header.version > this.RESVERSION) {
             throw new Error('Resource file version too new');
+        }
+
+        if (header.objsize !== header.datasize) {
+            console.warn('objsize does not match datasize');
+            debugger;
         }
 
         // Skip over header data if present (hdrsize + sizeof(FileResHdr))
@@ -1842,6 +1876,7 @@ class DatParser {
 
             if (!realPath) {
                 console.warn(`Resource file not found: ${resourcePath}`);
+                debugger;
                 return null;
             }
 
