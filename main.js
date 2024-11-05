@@ -164,7 +164,7 @@ class ImageryDatParser {
             const state = {
                 animName,                    // Array of Ascii Names
                 walkMap: stream.readUint32(), // Walkmap (OFFSET type)
-                flags: stream.readUint32(),   // Imagery state flags (DWORD)
+                flags: new ObjectFlags(stream.readUint32()),   // Imagery state flags (DWORD)
                 aniFlags: new AnimationFlags(stream.readInt16()), // Animation state flags (short)
                 frames: stream.readInt16(),   // Number of frames (short)
                 width: stream.readInt16(),    // Graphics maximum width (short)
@@ -181,7 +181,7 @@ class ImageryDatParser {
                 wWidth: stream.readInt16(),   // Object's world width for walk map and bound box (short)
                 wLength: stream.readInt16(),  // Object's world length for walk map and bound box (short)
                 wHeight: stream.readInt16(),  // Object's world height for walk map and bound box (short)
-                invAniFlags: stream.readInt16(), // Animation flags for inventory animation (short)
+                invAniFlags: new AnimationFlags(stream.readInt16()), // Animation flags for inventory animation (short)
                 invFrames: stream.readInt16()    // Number of frames of inventory animation (short)
             };
 
@@ -1065,7 +1065,7 @@ class CGSResourceParser {
 
             // Then read the rest of the fields
             metaData.walkmap = stream.readUint32(); // Walkmap
-            metaData.imageryflags = stream.readUint32(); // Imagery state flags
+            metaData.imageryflags = new ObjectFlags(stream.readUint32()); // Imagery state flags
             metaData.aniflags = new AnimationFlags(stream.readUint16()); // Animation state flags
             metaData.frames = stream.readUint16(); // Number of frames
             metaData.widthmax = stream.readInt16();  // Graphics maximum width/height (for IsOnScreen and refresh rects)
