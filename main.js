@@ -952,7 +952,9 @@ class CGSResourceParser {
             version: stream.readUint8(),      // BYTE version
             datasize: stream.readUint32(),    // DWORD datasize
             objsize: stream.readUint32(),     // DWORD objsize
-            hdrsize: stream.readUint32()      // DWORD hdrsize
+            hdrsize: stream.readUint32(),     // DWORD hdrsize
+            imageryId: stream.readUint32(),
+            numStates: stream.readUint32(),
         };
 
         // Validate magic number and version
