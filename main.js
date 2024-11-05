@@ -759,6 +759,10 @@ class BitmapData {
                             }
                         }
                     }
+                } else {
+                    // The bitmap data is compressed, but not chunked
+                    console.warn('Compressed, but not chunked bitmap data is not supported yet');
+                    debugger;
                 }
             } else {
                 // Create a view into the pixel data based on the bit depth
