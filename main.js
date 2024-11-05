@@ -706,7 +706,7 @@ class BitmapData {
 
         // Handle palette data if present
         if (bitmap.palettesize > 0 && bitmap.palette > 0) {
-            const paletteOffset = baseOffset + bitmap.palette;
+            const paletteOffset = baseOffset + bitmap.palette-8;//hack!!!
             const expectedSize = (256 * 2) + (256 * 4); // 256 * (2 bytes for colors + 4 bytes for rgbcolors)
 
             // Validate palette size
