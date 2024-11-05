@@ -146,6 +146,7 @@ types:
     
     - id: invframes
       type: u2  # Numbera of frames of inventory animation
+      
   offset:
     seq:
     - id: offset

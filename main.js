@@ -1027,15 +1027,6 @@ class CGSResourceParser {
             bitmapOffsets.push(stream.readUint32());
         }
 
-        // Skip padding until first bitmap
-        if (bitmapOffsets.length > 0) {
-            const currentPos = stream.getPos();
-            const paddingSize = bitmapOffsets[0] - currentPos;
-            if (paddingSize > 0) {
-                stream.skip(paddingSize);
-            }
-        }
-
         // Read the entire resource data
         const resourceData = new Uint8Array(header.objsize); // Allocate full objsize
         const dataView = new Uint8Array(arrayBuffer, stream.getPos(), header.datasize);
@@ -1043,14 +1034,14 @@ class CGSResourceParser {
 
         // Process bitmaps if present
         let bitmaps = [];
-        if (bitmapOffsets) {
+        if (bitmapOffsets && bitmapOffsets.length) {
             for (let i = 0; i < header.topbm; i++) {
                 const offset = bitmapOffsets[i];
                 const bitmapStream = new InputStream(resourceData.buffer);
                 bitmapStream.setPos(offset);
 
-                // Read bitmap header at offset
-                const bitmap = await this.readBitmap(bitmapStream, resourceData.buffer);
+                // Read bitmap at the given offset
+                const bitmap = BitmapData.readBitmap(bitmapStream, resourceData.buffer);
 
                 // Get the relative path by removing the base game directory and 'Resources' folder
                 const relativePath = filePath
@@ -1097,12 +1088,6 @@ class CGSResourceParser {
             bitmaps
         };
     }
-
-    static async readBitmap(stream, arrayBuffer) {
-        const bitmap = BitmapData.readBitmap(stream, arrayBuffer);
-        return bitmap;
-    }
-
 
     static convert15to16(bitmap) {
         if (!bitmap || !bitmap.data) {
