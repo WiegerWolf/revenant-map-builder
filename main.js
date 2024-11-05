@@ -706,7 +706,6 @@ class BitmapData {
                 if (bitmap.flags.bm_chunked) {
                     // The bitmap data directly points to a ChunkHeader
                     const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
-                    console.log('Chunk header:', mainHeader);
 
                     // Allocate the final bitmap data
                     if (bitmap.flags.bm_8bit) {
@@ -732,7 +731,7 @@ class BitmapData {
                             }
 
                             // Process non-blank block
-                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset + 12);
+                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + mainHeader.headerSize + blockOffset - 16);
                             const decompressed = cache.addChunk(chunkData, 1);
 
                             // Copy the decompressed chunk to the right position
