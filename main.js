@@ -975,17 +975,64 @@ class CGSResourceParser {
             debugger;
         }
 
-        // Skip over header data if present (hdrsize + sizeof(FileResHdr))
-        if (header.hdrsize > 0) {
-            stream.skip(header.hdrsize);
+        // Read imagery_header_meta for each state
+        const imageryMetaData = [];
+        for (let i = 0; i < header.numStates; i++) {
+            const metaData = {
+                ascii: new Uint8Array(32)  // Initialize ASCII array
+            };
+
+            // Read ASCII characters first
+            for (let j = 0; j < 32; j++) {
+                metaData.ascii[j] = stream.readUint8();
+            }
+            // Convert ASCII array to string
+            metaData.ascii = String.fromCharCode(...metaData.ascii)
+                .replace(/\0/g, '');  // Remove null characters
+
+            // Then read the rest of the fields
+            metaData.walkmap = stream.readUint32();
+            metaData.imageryflags = stream.readUint32();
+            metaData.aniflags = stream.readUint16();
+            metaData.frames = stream.readUint16();
+            metaData.widthmax = stream.readInt16();  // Note: signed
+            metaData.heightmax = stream.readUint16();
+            metaData.regx = stream.readInt16();      // Note: signed
+            metaData.regy = stream.readUint16();
+            metaData.regz = stream.readUint16();
+            metaData.animregx = stream.readUint16();
+            metaData.animregy = stream.readUint16();
+            metaData.animregz = stream.readUint16();
+            metaData.wregx = stream.readUint16();
+            metaData.wregy = stream.readUint16();
+            metaData.wregz = stream.readUint16();
+            metaData.wwidth = stream.readUint16();
+            metaData.wlength = stream.readUint16();
+            metaData.wheight = stream.readUint16();
+            metaData.invaniflags = stream.readUint16();
+            metaData.invframes = stream.readUint16();
+
+            imageryMetaData.push(metaData);
         }
 
-        // Read bitmap table if present
-        let bitmapTable = null;
-        if (header.topbm > 0) {
-            bitmapTable = new Array(header.topbm);
-            for (let i = 0; i < header.topbm; i++) {
-                bitmapTable[i] = stream.readUint32();
+        // Skip unknown data
+        const unknownDataSize = header.hdrsize - 12 - (72 * header.numStates);
+        if (unknownDataSize > 0) {
+            stream.skip(unknownDataSize);
+        }
+
+        // Read bitmap offsets
+        const bitmapOffsets = [];
+        for (let i = 0; i < header.topbm; i++) {
+            bitmapOffsets.push(stream.readUint32());
+        }
+
+        // Skip padding until first bitmap
+        if (bitmapOffsets.length > 0) {
+            const currentPos = stream.getPos();
+            const paddingSize = bitmapOffsets[0] - currentPos;
+            if (paddingSize > 0) {
+                stream.skip(paddingSize);
             }
         }
 
@@ -994,16 +1041,11 @@ class CGSResourceParser {
         const dataView = new Uint8Array(arrayBuffer, stream.getPos(), header.datasize);
         resourceData.set(dataView); // Copy datasize bytes
 
-        // "Touch" the resource data every 2048 bytes (matching C++ behavior)
-        for (let c = 0; c < header.datasize; c += 2048) {
-            const dummy = resourceData[c];
-        }
-
         // Process bitmaps if present
         let bitmaps = [];
-        if (bitmapTable) {
+        if (bitmapOffsets) {
             for (let i = 0; i < header.topbm; i++) {
-                const offset = bitmapTable[i];
+                const offset = bitmapOffsets[i];
                 const bitmapStream = new InputStream(resourceData.buffer);
                 bitmapStream.setPos(offset);
 
@@ -1050,6 +1092,7 @@ class CGSResourceParser {
         return {
             header,
             data: resourceData,
+            imageryMetaData,
             size: header.objsize,
             bitmaps
         };
