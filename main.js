@@ -144,7 +144,7 @@ class ImageryDatParser {
         const startPos = stream.getPos();
 
         const header = {
-            imageryId: stream.readInt32(),    // Id number for imagery handler (index to builder array)
+            imageryId: ImageryType.getName(stream.readUint32()),    // Id number for imagery handler (index to builder array)
             numStates: stream.readInt32(),    // Number of states
             states: []
         };
@@ -165,7 +165,7 @@ class ImageryDatParser {
                 animName,                    // Array of Ascii Names
                 walkMap: stream.readUint32(), // Walkmap (OFFSET type)
                 flags: stream.readUint32(),   // Imagery state flags (DWORD)
-                aniFlags: stream.readInt16(), // Animation state flags (short)
+                aniFlags: new AnimationFlags(stream.readInt16()), // Animation state flags (short)
                 frames: stream.readInt16(),   // Number of frames (short)
                 width: stream.readInt16(),    // Graphics maximum width (short)
                 height: stream.readInt16(),   // Graphics maximum height (short)
@@ -232,9 +232,6 @@ class ImageryDatParser {
                         resource: resource,
                         bitmaps: resource.bitmaps.map(bitmap => ({
                             ...bitmap,
-                            // You might want to add additional processing here
-                            // For example, converting to canvas if needed:
-                            // canvas: CGSResourceParser.bitmapToCanvas(bitmap)
                         }))
                     });
                 } else {
@@ -256,6 +253,81 @@ class ImageryDatParser {
         }
 
         return result;
+    }
+}
+
+class ImageryType {
+    static ANIMATION = 0;
+    static MESH3D = 1;
+    static MESH3DHELPER = 2;
+    static MULTI = 3;
+    static MULTIANIMATION = 4;
+
+    static getName(id) {
+        switch (id) {
+            case this.ANIMATION: return 'ANIMATION';
+            case this.MESH3D: return 'MESH3D';
+            case this.MESH3DHELPER: return 'MESH3DHELPER';
+            case this.MULTI: return 'MULTI';
+            case this.MULTIANIMATION: return 'MULTIANIMATION';
+            default: return 'UNKNOWN';
+        }
+    }
+
+    static isValid(id) {
+        return id >= this.ANIMATION && id <= this.MULTIANIMATION;
+    }
+}
+
+class AnimationFlags {
+    constructor(value) {
+        // Convert number to 16-bit binary string (animation flags are 16-bit)
+        const bits = (value >>> 0).toString(2).padStart(16, '0');
+
+        // Parse all animation flags
+        this.looping = !!parseInt(bits[15 - 0]);         // Circles back to original position
+        this.faceMotion = !!parseInt(bits[15 - 1]);      // This animation has facing motion data
+        this.interFrame = !!parseInt(bits[15 - 2]);      // Uses interframe compression
+        this.noReg = !!parseInt(bits[15 - 3]);           // Use 0,0 of FLC as registration pt of animation
+        this.synchronize = !!parseInt(bits[15 - 4]);     // Causes animation frame to match 'targets' animation frame
+        this.move = !!parseInt(bits[15 - 5]);            // Use the deltas in the ani to move the x,y position
+        this.noInterpolation = !!parseInt(bits[15 - 6]); // Prevents system from interpolating between animations
+        this.pingPong = !!parseInt(bits[15 - 7]);        // Pingpong the animation
+        this.reverse = !!parseInt(bits[15 - 8]);         // Play the animation backwards
+        this.noRestore = !!parseInt(bits[15 - 9]);       // Draw to screen but don't bother to restore
+        this.root = !!parseInt(bits[15 - 10]);           // This animation is a root state
+        this.fly = !!parseInt(bits[15 - 11]);            // This animation is a flying animation (jump, etc.)
+        this.sync = !!parseInt(bits[15 - 12]);           // Synchronize all animations on screen
+        this.noMotion = !!parseInt(bits[15 - 13]);       // Ignore motion deltas
+        this.accurateKeys = !!parseInt(bits[15 - 14]);   // Has only high accuracy 'code' style 3D ani keys
+        this.root2Root = !!parseInt(bits[15 - 15]);      // This animation starts at root and returns to root
+    }
+
+    // Helper method to check if animation is a root animation
+    isRootAnimation() {
+        return this.root || this.root2Root;
+    }
+
+    // Helper method to check if animation involves motion
+    hasMotion() {
+        return this.move && !this.noMotion;
+    }
+
+    // Helper method to check if animation needs synchronization
+    needsSync() {
+        return this.synchronize || this.sync;
+    }
+
+    // Helper method to check if animation loops in some way
+    isLooping() {
+        return this.looping || this.pingPong;
+    }
+
+    // Helper method to get playback direction
+    getPlaybackDirection() {
+        if (this.pingPong) return 'pingpong';
+        if (this.reverse) return 'reverse';
+        return 'forward';
     }
 }
 
@@ -706,7 +778,7 @@ class BitmapData {
 
         // Handle palette data if present
         if (bitmap.palettesize > 0 && bitmap.palette > 0) {
-            const paletteOffset = baseOffset + bitmap.palette-8;//hack!!!
+            const paletteOffset = baseOffset + bitmap.palette - 8;//hack!!!
             const expectedSize = (256 * 2) + (256 * 4); // 256 * (2 bytes for colors + 4 bytes for rgbcolors)
 
             // Validate palette size
@@ -954,7 +1026,7 @@ class CGSResourceParser {
             datasize: stream.readUint32(),    // DWORD datasize
             objsize: stream.readUint32(),     // DWORD objsize
             hdrsize: stream.readUint32(),     // DWORD hdrsize
-            imageryId: stream.readUint32(),
+            imageryId: ImageryType.getName(stream.readUint32()),
             numStates: stream.readUint32(),
         };
 
@@ -992,26 +1064,26 @@ class CGSResourceParser {
                 .replace(/\0/g, '');  // Remove null characters
 
             // Then read the rest of the fields
-            metaData.walkmap = stream.readUint32();
-            metaData.imageryflags = stream.readUint32();
-            metaData.aniflags = stream.readUint16();
-            metaData.frames = stream.readUint16();
-            metaData.widthmax = stream.readInt16();  // Note: signed
+            metaData.walkmap = stream.readUint32(); // Walkmap
+            metaData.imageryflags = stream.readUint32(); // Imagery state flags
+            metaData.aniflags = new AnimationFlags(stream.readUint16()); // Animation state flags
+            metaData.frames = stream.readUint16(); // Number of frames
+            metaData.widthmax = stream.readInt16();  // Graphics maximum width/height (for IsOnScreen and refresh rects)
             metaData.heightmax = stream.readUint16();
-            metaData.regx = stream.readInt16();      // Note: signed
+            metaData.regx = stream.readInt16();  // Registration point x,y,z for graphics
             metaData.regy = stream.readUint16();
             metaData.regz = stream.readUint16();
-            metaData.animregx = stream.readUint16();
+            metaData.animregx = stream.readUint16(); // Registration point of animation
             metaData.animregy = stream.readUint16();
             metaData.animregz = stream.readUint16();
-            metaData.wregx = stream.readUint16();
+            metaData.wregx = stream.readUint16(); // World registration x and y of walk and bounding box info
             metaData.wregy = stream.readUint16();
             metaData.wregz = stream.readUint16();
-            metaData.wwidth = stream.readUint16();
+            metaData.wwidth = stream.readUint16(); // Object's world width, length, and height for walk map and bound box
             metaData.wlength = stream.readUint16();
             metaData.wheight = stream.readUint16();
-            metaData.invaniflags = stream.readUint16();
-            metaData.invframes = stream.readUint16();
+            metaData.invaniflags = new AnimationFlags(stream.readUint16()); // Animation flags for inventory animation
+            metaData.invframes = stream.readUint16(); // Number of frames of inventory animation
 
             imageryMetaData.push(metaData);
         }
@@ -1127,41 +1199,6 @@ class CGSResourceParser {
                 a: color15.a
             };
         }
-    }
-
-    // Helper function to convert bitmap to canvas
-    static bitmapToCanvas(bitmap) {
-        const canvas = document.createElement('canvas');
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const ctx = canvas.getContext('2d');
-        const imageData = ctx.createImageData(bitmap.width, bitmap.height);
-
-        if (bitmap.flags & 0x0001) { // 8-bit palettized
-            for (let i = 0; i < bitmap.data.length; i++) {
-                const paletteIndex = bitmap.data[i];
-                const color = bitmap.palette[paletteIndex];
-                imageData.data[i * 4] = color.r;
-                imageData.data[i * 4 + 1] = color.g;
-                imageData.data[i * 4 + 2] = color.b;
-                imageData.data[i * 4 + 3] = color.a;
-            }
-        } else { // 16-bit
-            const data = new Uint16Array(bitmap.data.buffer);
-            for (let i = 0; i < data.length; i++) {
-                const color = data[i];
-                const r = ((color & 0xF800) >> 11) << 3;
-                const g = ((color & 0x07E0) >> 5) << 2;
-                const b = (color & 0x001F) << 3;
-                imageData.data[i * 4] = r;
-                imageData.data[i * 4 + 1] = g;
-                imageData.data[i * 4 + 2] = b;
-                imageData.data[i * 4 + 3] = 255;
-            }
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-        return canvas;
     }
 }
 
