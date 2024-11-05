@@ -510,11 +510,12 @@ class ChunkHeader {
         }
 
         // Calculate total header size (for debugging/verification)
-        this.headerSize = 12 + (numBlocks * 4);
+        this.headerSize = stream.getPos();
     }
 
     // Helper method to check if a block is blank
-    isBlockBlank(blockIndex) {
+    isBlockBlank(x, y) {
+        const blockIndex = this.getBlockIndex(x, y);
         return this.blocks[blockIndex] === 0;
     }
 
@@ -741,7 +742,7 @@ class BitmapData {
                 for (let y = 0; y < mainHeader.height; y++) {
                     for (let x = 0; x < mainHeader.width; x++) {
                         const blockOffset = mainHeader.getBlockOffset(x, y);
-                        if (blockOffset === 0) {
+                        if (mainHeader.isBlockBlank(x, y)) {
                             // This is a blank block, skip it
                             continue;
                         }
