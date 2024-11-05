@@ -594,7 +594,7 @@ class ChunkDecompressor {
 class BitmapData {
     static readBitmap(stream, arrayBuffer) {
         // Read the fixed-size header structure
-        const bitmap = {
+        const bitmapHeader = {
             width: stream.readInt32(),
             height: stream.readInt32(),
             regx: stream.readInt32(),
@@ -612,38 +612,41 @@ class BitmapData {
             normal: stream.readUint32(),        // Offset to normal data
             palettesize: stream.readUint32(),   // Size of Palette
             palette: stream.readUint32(),       // Relative Offset to Palette data
-            datasize: stream.readUint32(),      // Size of pixel data
         };
-
-        // Sanity checks
-        if (bitmap.width > 8192 || bitmap.height > 8192) {
-            throw new Error('Corrupted bitmap dimensions');
-        }
-
-        if (!bitmap.flags.isValid()) {
-            throw new Error('Invalid bitmap flags configuration');
-        }
 
         const baseOffset = stream.getPos();
 
+        // Sanity checks
+        if (bitmapHeader.width > 8192 || bitmapHeader.height > 8192) {
+            throw new Error('Corrupted bitmap dimensions');
+        }
+
+        if (!bitmapHeader.flags.isValid()) {
+            throw new Error('Invalid bitmap flags configuration');
+        }
+
+
         // Handle pixel data
-        if (!bitmap.flags.bm_nobitmap) {
-            if (bitmap.flags.bm_compressed) {
-                if (bitmap.flags.bm_chunked) {
+        if (!bitmapHeader.flags.bm_nobitmap) {
+            // Read pixel datasize
+            bitmapHeader.datasize = stream.readUint32();
+
+            if (bitmapHeader.flags.bm_compressed) {
+                if (bitmapHeader.flags.bm_chunked) {
                     // The bitmap data directly points to a ChunkHeader
                     const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
                     console.log('Chunk header:', mainHeader);
 
                     // Allocate the final bitmap data
-                    if (bitmap.flags.bm_8bit) {
-                        bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 1);
-                    } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
-                        bitmap.data = new Uint16Array(bitmap.width * bitmap.height * 1);
-                    } else if (bitmap.flags.bm_24bit) {
+                    if (bitmapHeader.flags.bm_8bit) {
+                        bitmapHeader.data = new Uint8Array(bitmapHeader.width * bitmapHeader.height * 1);
+                    } else if (bitmapHeader.flags.bm_15bit || bitmapHeader.flags.bm_16bit) {
+                        bitmapHeader.data = new Uint16Array(bitmapHeader.width * bitmapHeader.height * 1);
+                    } else if (bitmapHeader.flags.bm_24bit) {
                         // For 24-bit, we need to handle RGBTRIPLE structure
-                        bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 3);
-                    } else if (bitmap.flags.bm_32bit) {
-                        bitmap.data = new Uint32Array(bitmap.width * bitmap.height * 1);
+                        bitmapHeader.data = new Uint8Array(bitmapHeader.width * bitmapHeader.height * 3);
+                    } else if (bitmapHeader.flags.bm_32bit) {
+                        bitmapHeader.data = new Uint32Array(bitmapHeader.width * bitmapHeader.height * 1);
                     }
 
                     const cache = new ChunkCache(64);
@@ -668,17 +671,17 @@ class BitmapData {
                             // Make sure we don't copy beyond bitmap boundaries
                             const copyWidth = Math.min(
                                 ChunkCache.CHUNK_WIDTH,
-                                bitmap.width - destX
+                                bitmapHeader.width - destX
                             );
                             const copyHeight = Math.min(
                                 ChunkCache.CHUNK_HEIGHT,
-                                bitmap.height - destY
+                                bitmapHeader.height - destY
                             );
 
                             for (let cy = 0; cy < copyHeight; cy++) {
                                 const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
-                                const dstOffset = ((destY + cy) * bitmap.width) + destX;
-                                bitmap.data.set(
+                                const dstOffset = ((destY + cy) * bitmapHeader.width) + destX;
+                                bitmapHeader.data.set(
                                     decompressed.subarray(srcOffset, srcOffset + copyWidth),
                                     dstOffset
                                 );
@@ -689,15 +692,15 @@ class BitmapData {
             } else {
                 // Create a view into the pixel data based on the bit depth
                 // This more closely matches the union structure in the C++ code
-                if (bitmap.flags.bm_8bit) {
-                    bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
-                } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
-                    bitmap.data = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
-                } else if (bitmap.flags.bm_24bit) {
+                if (bitmapHeader.flags.bm_8bit) {
+                    bitmapHeader.data = new Uint8Array(arrayBuffer, baseOffset, bitmapHeader.datasize);
+                } else if (bitmapHeader.flags.bm_15bit || bitmapHeader.flags.bm_16bit) {
+                    bitmapHeader.data = new Uint16Array(arrayBuffer, baseOffset, bitmapHeader.datasize / 2);
+                } else if (bitmapHeader.flags.bm_24bit) {
                     // For 24-bit, we need to handle RGBTRIPLE structure
-                    bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
-                } else if (bitmap.flags.bm_32bit) {
-                    bitmap.data = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
+                    bitmapHeader.data = new Uint8Array(arrayBuffer, baseOffset, bitmapHeader.datasize);
+                } else if (bitmapHeader.flags.bm_32bit) {
+                    bitmapHeader.data = new Uint32Array(arrayBuffer, baseOffset, bitmapHeader.datasize / 4);
                 }
             }
         } else {
@@ -705,13 +708,13 @@ class BitmapData {
         }
 
         // Handle palette data if present
-        if (bitmap.palettesize > 0 && bitmap.palette > 0) {
-            const paletteOffset = baseOffset + bitmap.palette-8;//hack!!!
+        if (bitmapHeader.palettesize > 0 && bitmapHeader.palette > 0) {
+            const paletteOffset = baseOffset + bitmapHeader.palette;
             const expectedSize = (256 * 2) + (256 * 4); // 256 * (2 bytes for colors + 4 bytes for rgbcolors)
 
             // Validate palette size
-            if (bitmap.palettesize !== expectedSize) {
-                console.warn(`Unexpected palette size: ${bitmap.palettesize} bytes (expected ${expectedSize} bytes)`);
+            if (bitmapHeader.palettesize !== expectedSize) {
+                console.warn(`Unexpected palette size: ${bitmapHeader.palettesize} bytes (expected ${expectedSize} bytes)`);
             }
 
             // Validate that the palette data fits within the buffer
@@ -721,7 +724,7 @@ class BitmapData {
                 const alignedRGBOffset = Math.ceil((paletteOffset + 512) / 4) * 4;
 
                 try {
-                    bitmap.palette = {
+                    bitmapHeader.palette = {
                         colors: new Uint16Array(arrayBuffer, alignedPaletteOffset, 256),
                         rgbcolors: new Uint32Array(arrayBuffer, alignedRGBOffset, 256)
                     };
@@ -740,19 +743,20 @@ class BitmapData {
                         tempRGBColors[i] = view.getUint32(paletteOffset + 512 + i * 4, true);
                     }
 
-                    bitmap.palette = {
+                    bitmapHeader.palette = {
                         colors: tempColors,
                         rgbcolors: tempRGBColors
                     };
                 }
             } else {
                 console.warn('Palette data extends beyond buffer bounds');
+                debugger;
             }
         }
 
         // Handle additional buffers if present and not compressed
-        if (!bitmap.flags.bm_compressed) {
-            if (bitmap.flags.bm_zbuffer && bitmap.zbuffersize > 0) {
+        if (!bitmapHeader.flags.bm_compressed) {
+            if (bitmapHeader.flags.bm_zbuffer && bitmapHeader.zbuffersize > 0) {
                 // bitmap.zbuffer = new Uint16Array(
                 //     arrayBuffer,
                 //     baseOffset + bitmap.zbuffer,
@@ -760,7 +764,7 @@ class BitmapData {
                 // );
             }
 
-            if (bitmap.flags.bm_normals && bitmap.normalsize > 0) {
+            if (bitmapHeader.flags.bm_normals && bitmapHeader.normalsize > 0) {
                 // bitmap.normal = new Uint16Array(
                 //     arrayBuffer,
                 //     baseOffset + bitmap.normal,
@@ -768,7 +772,7 @@ class BitmapData {
                 // );
             }
 
-            if (bitmap.flags.bm_alpha && bitmap.alphasize > 0) {
+            if (bitmapHeader.flags.bm_alpha && bitmapHeader.alphasize > 0) {
                 // bitmap.alpha = new Uint8Array(
                 //     arrayBuffer,
                 //     baseOffset + bitmap.alpha,
@@ -776,7 +780,7 @@ class BitmapData {
                 // );
             }
 
-            if (bitmap.flags.bm_alias && bitmap.aliassize > 0) {
+            if (bitmapHeader.flags.bm_alias && bitmapHeader.aliassize > 0) {
                 // bitmap.alias = new Uint8Array(
                 //     arrayBuffer,
                 //     baseOffset + bitmap.alias,
@@ -785,7 +789,7 @@ class BitmapData {
             }
         }
 
-        return bitmap;
+        return bitmapHeader;
     }
 }
 
