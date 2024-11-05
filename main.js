@@ -687,8 +687,6 @@ class BitmapData {
             datasize: stream.readUint32(),      // Size of pixel data
         };
 
-        if (bitmap.flags.bm_5bitpal) debugger;
-
         // Sanity checks
         if (bitmap.width > 8192 || bitmap.height > 8192) {
             throw new Error('Corrupted bitmap dimensions');
@@ -701,84 +699,102 @@ class BitmapData {
         const baseOffset = stream.getPos();
 
         // Handle pixel data
-        if (!bitmap.flags.bm_nobitmap) {
-            if (bitmap.flags.bm_compressed) {
-                if (bitmap.flags.bm_chunked) {
-                    // The bitmap data directly points to a ChunkHeader
-                    const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
+        if (bitmap.flags.bm_nobitmap) {
+            // No pixel data
+            bitmap.data = null;
+            console.log('Bitmap has no pixel data');
+            return bitmap;
+        }
+        
+        // Create a dedicated buffer for this bitmap's data
+        const bitmapBuffer = new ArrayBuffer(bitmap.datasize);
+        const bitmapData = new Uint8Array(bitmapBuffer);
 
-                    // Allocate the final bitmap data
-                    if (bitmap.flags.bm_8bit) {
-                        bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 1);
-                    } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
-                        bitmap.data = new Uint16Array(bitmap.width * bitmap.height * 1);
-                    } else if (bitmap.flags.bm_24bit) {
-                        // For 24-bit, we need to handle RGBTRIPLE structure
-                        bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 3);
-                    } else if (bitmap.flags.bm_32bit) {
-                        bitmap.data = new Uint32Array(bitmap.width * bitmap.height * 1);
-                    }
+        // Copy the bitmap data from the original buffer
+        const sourceData = new Uint8Array(
+            arrayBuffer,
+            baseOffset,
+            bitmap.datasize
+        );
+        bitmapData.set(sourceData);
 
-                    const cache = new ChunkCache(64);
+        // Create a new stream for the bitmap data
+        const bitmapStream = new InputStream(bitmapBuffer);
 
-                    // Process each block
-                    for (let y = 0; y < mainHeader.height; y++) {
-                        for (let x = 0; x < mainHeader.width; x++) {
-                            const blockOffset = mainHeader.getBlockOffset(x, y);
-                            if (blockOffset === 0) {
-                                // This is a blank block, skip it
-                                continue;
-                            }
+        if (bitmap.flags.bm_compressed) {
+            if (bitmap.flags.bm_chunked) {
+                // The bitmap data directly points to a ChunkHeader
+                const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
 
-                            // Process non-blank block
-                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + mainHeader.headerSize + blockOffset - 16);
-                            const decompressed = cache.addChunk(chunkData, 1);
-
-                            // Copy the decompressed chunk to the right position
-                            const destX = x * ChunkCache.CHUNK_WIDTH;
-                            const destY = y * ChunkCache.CHUNK_HEIGHT;
-
-                            // Make sure we don't copy beyond bitmap boundaries
-                            const copyWidth = Math.min(
-                                ChunkCache.CHUNK_WIDTH,
-                                bitmap.width - destX
-                            );
-                            const copyHeight = Math.min(
-                                ChunkCache.CHUNK_HEIGHT,
-                                bitmap.height - destY
-                            );
-
-                            for (let cy = 0; cy < copyHeight; cy++) {
-                                const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
-                                const dstOffset = ((destY + cy) * bitmap.width) + destX;
-                                bitmap.data.set(
-                                    decompressed.subarray(srcOffset, srcOffset + copyWidth),
-                                    dstOffset
-                                );
-                            }
-                        }
-                    }
-                } else {
-                    // The bitmap data is compressed, but not chunked
-                    console.warn('Compressed, but not chunked bitmap data is not supported yet');
-                    debugger;
-                }
-            } else {
-                // Create a view into the pixel data based on the bit depth
-                // This more closely matches the union structure in the C++ code
+                // Allocate the final bitmap data
                 if (bitmap.flags.bm_8bit) {
-                    bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+                    bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 1);
                 } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
-                    bitmap.data = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
+                    bitmap.data = new Uint16Array(bitmap.width * bitmap.height * 1);
                 } else if (bitmap.flags.bm_24bit) {
                     // For 24-bit, we need to handle RGBTRIPLE structure
-                    bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+                    bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 3);
                 } else if (bitmap.flags.bm_32bit) {
-                    bitmap.data = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
+                    bitmap.data = new Uint32Array(bitmap.width * bitmap.height * 1);
                 }
+
+                const cache = new ChunkCache(64);
+
+                // Process each block
+                for (let y = 0; y < mainHeader.height; y++) {
+                    for (let x = 0; x < mainHeader.width; x++) {
+                        const blockOffset = mainHeader.getBlockOffset(x, y);
+                        if (blockOffset === 0) {
+                            // This is a blank block, skip it
+                            continue;
+                        }
+
+                        // Process non-blank block
+                        const chunkData = new Uint8Array(arrayBuffer, baseOffset + mainHeader.headerSize + blockOffset - 16);
+                        const decompressed = cache.addChunk(chunkData, 1);
+
+                        // Copy the decompressed chunk to the right position
+                        const destX = x * ChunkCache.CHUNK_WIDTH;
+                        const destY = y * ChunkCache.CHUNK_HEIGHT;
+
+                        // Make sure we don't copy beyond bitmap boundaries
+                        const copyWidth = Math.min(
+                            ChunkCache.CHUNK_WIDTH,
+                            bitmap.width - destX
+                        );
+                        const copyHeight = Math.min(
+                            ChunkCache.CHUNK_HEIGHT,
+                            bitmap.height - destY
+                        );
+
+                        for (let cy = 0; cy < copyHeight; cy++) {
+                            const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
+                            const dstOffset = ((destY + cy) * bitmap.width) + destX;
+                            bitmap.data.set(
+                                decompressed.subarray(srcOffset, srcOffset + copyWidth),
+                                dstOffset
+                            );
+                        }
+                    }
+                }
+            } else {
+                // The bitmap data is compressed, but not chunked
+                console.warn('Compressed, but not chunked bitmap data is not supported yet');
+                debugger;
             }
         } else {
-            console.info(`no_bitmap flag present, not reading any bitmap`)
+            // Create a view into the pixel data based on the bit depth
+            // This more closely matches the union structure in the C++ code
+            if (bitmap.flags.bm_8bit) {
+                bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+            } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
+                bitmap.data = new Uint16Array(arrayBuffer, baseOffset, bitmap.datasize / 2);
+            } else if (bitmap.flags.bm_24bit) {
+                // For 24-bit, we need to handle RGBTRIPLE structure
+                bitmap.data = new Uint8Array(arrayBuffer, baseOffset, bitmap.datasize);
+            } else if (bitmap.flags.bm_32bit) {
+                bitmap.data = new Uint32Array(arrayBuffer, baseOffset, bitmap.datasize / 4);
+            }
         }
 
         // Handle palette data if present
