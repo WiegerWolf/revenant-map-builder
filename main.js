@@ -418,25 +418,20 @@ class ChunkHeader {
     static CHUNK_WIDTH = 64;
     static CHUNK_HEIGHT = 64;
 
-    constructor(dataView, offset = 0, type = 0, width = 0, height = 0) {
+    constructor(dataView, offset = 0) {
         // Read the fixed part of the header
-        this.type = type;
-        this.width = width;
-        this.height = height;
+        this.type = dataView.getUint32(offset, true);      // Compressed flag
+        this.width = dataView.getInt32(offset + 4, true);  // Width in blocks
+        this.height = dataView.getInt32(offset + 8, true); // Height in blocks
 
-        if (this.width === 0 || this.height === 0) {
-            console.warn('ChunkHeader: width or height is 0');
-            debugger;
-            return;
-        }
         // Validate dimensions
-        if (this.width < 0 || this.height < 0 ||
+        if (this.width <= 0 || this.height <= 0 ||
             this.width > 128 || this.height > 128) {
             throw new Error(`Invalid chunk header dimensions: ${this.width}x${this.height}`);
         }
 
         // The block array starts immediately after the header
-        const blockArrayOffset = offset;
+        const blockArrayOffset = offset + 12;
         const numBlocks = this.width * this.height;
 
         // Read the flexible array of block offsets
@@ -444,6 +439,9 @@ class ChunkHeader {
         for (let i = 0; i < numBlocks; i++) {
             this.blocks[i] = dataView.getUint32(blockArrayOffset + (i * 4), true);
         }
+
+        // Calculate total header size (for debugging/verification)
+        this.headerSize = 12 + (numBlocks * 4);
     }
 
     // Helper method to check if a block is blank
@@ -615,10 +613,6 @@ class BitmapData {
             palettesize: stream.readUint32(),   // Size of Palette
             palette: stream.readUint32(),       // Relative Offset to Palette data
             datasize: stream.readUint32(),      // Size of pixel data
-            // Chunks?
-            chunk_decomp_flag: stream.readUint32(),
-            chunks_width: stream.readUint32(),
-            chunks_height: stream.readUint32(),
         };
 
         // Sanity checks
@@ -637,7 +631,7 @@ class BitmapData {
             if (bitmap.flags.bm_compressed) {
                 if (bitmap.flags.bm_chunked) {
                     // The bitmap data directly points to a ChunkHeader
-                    const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset, chunk_decomp_flag, chunks_width, chunks_height);
+                    const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
                     console.log('Chunk header:', mainHeader);
 
                     // Allocate the final bitmap data
@@ -664,7 +658,7 @@ class BitmapData {
                             }
 
                             // Process non-blank block
-                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset);
+                            const chunkData = new Uint8Array(arrayBuffer, baseOffset + blockOffset + 12);
                             const decompressed = cache.addChunk(chunkData, 1);
 
                             // Copy the decompressed chunk to the right position
