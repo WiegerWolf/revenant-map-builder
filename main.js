@@ -506,11 +506,16 @@ class ChunkHeader {
         const numBlocks = this.width * this.height;
         this.blocks = new Array(numBlocks);
         for (let i = 0; i < numBlocks; i++) {
-            this.blocks[i] = stream.readUint32();
+            let currentOffset = stream.getPos();
+            let relativeOffset = stream.readUint32()
+            // If the offset is 0, it means the block is empty
+            if (relativeOffset === 0) {
+                this.blocks[i] = 0;
+            } else {
+                // Otherwise, it's a relative offset from the start of the bitmap data
+                this.blocks[i] = relativeOffset + currentOffset;
+            }
         }
-
-        // Calculate total header size (for debugging/verification)
-        this.headerSize = stream.getPos();
     }
 
     // Helper method to check if a block is blank
