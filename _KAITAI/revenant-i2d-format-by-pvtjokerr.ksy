@@ -33,6 +33,7 @@ seq:
     #size: 6829
 
 types:
+
   rgba_color:
     seq: 
     - id: red
@@ -43,9 +44,8 @@ types:
       type: u1
     - id: alpha
       type: u1
+
   rgb_8_bit_color:
-  
-  
     seq:
       - id: color_data
         type: u2
@@ -60,12 +60,8 @@ types:
         value: (red * 255) / 31
       blue_8_bit:
         value: (blue * 255) / 31
-
       green_8_bit:
         value: (green * 255) / 63
-
-        
-
 
   file_header_block:
     seq:
@@ -209,16 +205,16 @@ types:
       type: u4
       repeat: expr # Repeat for a fixed number of times
       repeat-expr: chunks_width*chunk_height  # Repeat until end of stream
-    - id: bimtap_data
+    - id: bitmap_data
       size: datasize
 
     - id: colors
       type: rgb_8_bit_color
       repeat: expr # Repeat for a fixed number of times
-      repeat-expr: 256  # Repeat until end of stream
+      repeat-expr: 256
     - id: colors2
       type: rgba_color
       repeat: expr # Repeat for a fixed number of times
-      repeat-expr: 256  # Repeat until end of strea
+      repeat-expr: 256
 
     

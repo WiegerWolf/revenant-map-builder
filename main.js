@@ -787,32 +787,6 @@ class BitmapData {
 
         return bitmap;
     }
-
-    static copyChunkToBitmap(bitmap, chunk, chunkX, chunkY, bitmapWidth) {
-        const CHUNK_WIDTH = 64;
-        const CHUNK_HEIGHT = 64;
-
-        for (let y = 0; y < CHUNK_HEIGHT; y++) {
-            const srcOffset = y * CHUNK_WIDTH;
-            const dstOffset = ((chunkY * CHUNK_HEIGHT + y) * bitmapWidth) + (chunkX * CHUNK_WIDTH);
-            bitmap.set(chunk.subarray(srcOffset, srcOffset + CHUNK_WIDTH), dstOffset);
-        }
-    }
-
-    // Helper method to get a pixel value
-    static getPixel(bitmap, x, y) {
-        const offset = y * bitmap.width + x;
-        if (bitmap.flags.bm_24bit) {
-            // Handle RGBTRIPLE structure
-            const byteOffset = offset * 3;
-            return {
-                b: bitmap.data[byteOffset],
-                g: bitmap.data[byteOffset + 1],
-                r: bitmap.data[byteOffset + 2]
-            };
-        }
-        return bitmap.data[offset];
-    }
 }
 
 class BitmapDebug {
