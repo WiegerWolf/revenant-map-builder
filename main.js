@@ -1027,51 +1027,53 @@ class CGSResourceParser {
             bitmapOffsets.push(stream.readUint32());
         }
 
-        // Read the entire resource data
-        const resourceData = new Uint8Array(header.objsize); // Allocate full objsize
-        const dataView = new Uint8Array(arrayBuffer, stream.getPos(), header.datasize);
-        resourceData.set(dataView); // Copy datasize bytes
-
         // Process bitmaps if present
         let bitmaps = [];
         if (bitmapOffsets && bitmapOffsets.length) {
             for (let i = 0; i < header.topbm; i++) {
-                const offset = bitmapOffsets[i];
-                const bitmapStream = new InputStream(resourceData.buffer);
-                bitmapStream.setPos(offset);
+                const currentOffset = bitmapOffsets[i];
+                // Calculate size: either difference to next offset, or remaining data
+                const nextOffset = (i < header.topbm - 1)
+                    ? bitmapOffsets[i + 1]
+                    : header.datasize;
+                const bitmapSize = nextOffset - currentOffset;
 
-                // Read bitmap at the given offset
-                const bitmap = BitmapData.readBitmap(bitmapStream, resourceData.buffer);
-
-                // Get the relative path by removing the base game directory and 'Resources' folder
-                const relativePath = filePath
-                    .split('Resources/')[1]  // Get everything after 'Resources/'
-                    .replace('.i2d', '');    // Remove the .i2d extension
-
-                // Construct the new output path
-                const outputPath = path.join(
-                    '_OUTPUT',              // Base output directory
-                    relativePath,           // Preserve the original folder structure
-                    `bitmap_${i}.bmp`       // Bitmap filename
+                // Create a view of just this bitmap's data
+                const bitmapData = new Uint8Array(
+                    arrayBuffer,
+                    stream.getPos() + currentOffset,
+                    bitmapSize
                 );
 
-                // Ensure the output directory exists
-                await fs.mkdir(path.dirname(outputPath), { recursive: true });
+                // Create a stream just for this bitmap's data
+                const bitmapStream = new InputStream(bitmapData.buffer);
 
-                // Save the bitmap
+                // Read bitmap (now starting from position 0 since we have isolated data)
+                const bitmap = BitmapData.readBitmap(bitmapStream, bitmapData.buffer);
+
+                // Get the relative path and save bitmap
+                const relativePath = filePath
+                    .split('Resources/')[1]
+                    .replace('.i2d', '');
+
+                const outputPath = path.join(
+                    '_OUTPUT',
+                    relativePath,
+                    `bitmap_${i}.bmp`
+                );
+
+                await fs.mkdir(path.dirname(outputPath), { recursive: true });
                 await BitmapDebug.saveToBMP(bitmap, outputPath);
 
-                // Sanity check matching C++ code
+                // Perform sanity checks and conversions
                 if (bitmap.width > 8192 || bitmap.height > 8192) {
                     throw new Error('Corrupted bitmap list in resource');
                 }
 
-                // Convert 15-bit to 16-bit if necessary
                 if (bitmap.flags.bm_15bit) {
                     this.convert15to16(bitmap);
                 }
 
-                // Convert palette if necessary
                 if (bitmap.flags.bm_8bit) {
                     this.convertPal15to16(bitmap);
                 }
@@ -1082,7 +1084,6 @@ class CGSResourceParser {
 
         return {
             header,
-            data: resourceData,
             imageryMetaData,
             size: header.objsize,
             bitmaps
