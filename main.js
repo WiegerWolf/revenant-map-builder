@@ -1114,13 +1114,14 @@ class CGSResourceParser {
                 for (let j = 0; j < walkmapSize; j++) {
                     metaData.walkmapData[j] = stream.readUint8();
                 }
-
-                // Add padding to align to 4 bytes
-                const padding = (4 - (walkmapSize % 4)) % 4;
-                if (padding > 0) {
-                    stream.skip(padding);
-                }
             }
+        }
+
+        // Add padding to align to 4 bytes
+        const totalWalkmapSize = imageryMetaData.reduce((sum, metaData) => sum + metaData.wwidth * metaData.wlength, 0);
+        const padding = (4 - (totalWalkmapSize % 4)) % 4;
+        if (padding > 0) {
+            stream.skip(padding);
         }
 
         // Skip unknown data
@@ -1128,8 +1129,8 @@ class CGSResourceParser {
         if (unknownDataSize > 0) {
             // stream.skip(unknownDataSize);
             console.warn(`Attempt to skip ${unknownDataSize} bytes of unknown data prevented`);
-            if (unknownDataSize > 16) {
-                debugger;
+            if (unknownDataSize > 4) {
+                // debugger;
             }
         }
 
