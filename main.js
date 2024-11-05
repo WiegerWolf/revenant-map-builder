@@ -57,6 +57,33 @@ class InputStream {
     }
 }
 
+class BufferUtils {
+    /**
+     * Creates a new ArrayBuffer and Stream from a slice of an existing buffer
+     * @param {ArrayBuffer} sourceBuffer - The source ArrayBuffer to slice from
+     * @param {number} offset - The starting offset in the source buffer
+     * @param {number} length - The length of data to copy
+     * @returns {{buffer: ArrayBuffer, stream: InputStream}} Object containing the new buffer and stream
+     */
+    static createBufferSlice(sourceBuffer, offset, length) {
+        // Create a new buffer of the specified length
+        const newBuffer = new ArrayBuffer(length);
+        const newArray = new Uint8Array(newBuffer);
+
+        // Copy the data from the source buffer
+        const sourceArray = new Uint8Array(sourceBuffer, offset, length);
+        newArray.set(sourceArray);
+
+        // Create and return a new stream for the buffer
+        const stream = new InputStream(newBuffer);
+
+        return {
+            buffer: newBuffer,
+            stream: stream
+        };
+    }
+}
+
 class ImageryDatParser {
     static QUICKLOAD_FILE_ID = ('H'.charCodeAt(0)) |
         ('D'.charCodeAt(0) << 8) |
@@ -699,8 +726,6 @@ class BitmapData {
             throw new Error('Invalid bitmap flags configuration');
         }
 
-        const baseOffset = stream.getPos();
-
         // Handle pixel data
         if (bitmap.flags.bm_nobitmap) {
             // No pixel data
@@ -709,20 +734,13 @@ class BitmapData {
             return bitmap;
         }
 
-        // Create a dedicated buffer for this bitmap's data
-        const bitmapBuffer = new ArrayBuffer(bitmap.datasize);
-        const bitmapData = new Uint8Array(bitmapBuffer);
+        const baseOffset = stream.getPos();
 
-        // Copy the bitmap data from the original buffer
-        const sourceData = new Uint8Array(
+        const { buffer: bitmapBuffer, stream: bitmapStream } = BufferUtils.createBufferSlice(
             arrayBuffer,
             baseOffset,
             bitmap.datasize
         );
-        bitmapData.set(sourceData);
-
-        // Create a new stream for the bitmap data
-        const bitmapStream = new InputStream(bitmapBuffer);
 
         if (bitmap.flags.bm_compressed) {
             if (bitmap.flags.bm_chunked) {
@@ -746,14 +764,14 @@ class BitmapData {
                 // Process each block
                 for (let y = 0; y < mainHeader.height; y++) {
                     for (let x = 0; x < mainHeader.width; x++) {
-                        const blockOffset = mainHeader.getBlockOffset(x, y);
                         if (mainHeader.isBlockBlank(x, y)) {
                             // This is a blank block, skip it
                             continue;
                         }
 
+                        const blockOffset = mainHeader.getBlockOffset(x, y);
                         // Process non-blank block
-                        const chunkData = new Uint8Array(arrayBuffer, baseOffset + mainHeader.headerSize + blockOffset - 16);
+                        const chunkData = new Uint8Array(bitmapBuffer, blockOffset);
                         const decompressed = cache.addChunk(chunkData, 1);
 
                         // Copy the decompressed chunk to the right position
