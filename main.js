@@ -490,11 +490,11 @@ class ChunkHeader {
     static CHUNK_WIDTH = 64;
     static CHUNK_HEIGHT = 64;
 
-    constructor(dataView, offset = 0) {
+    constructor(stream) {
         // Read the fixed part of the header
-        this.type = dataView.getUint32(offset, true);      // Compressed flag
-        this.width = dataView.getInt32(offset + 4, true);  // Width in blocks
-        this.height = dataView.getInt32(offset + 8, true); // Height in blocks
+        this.type = stream.readUint32();      // Compressed flag
+        this.width = stream.readInt32();      // Width in blocks
+        this.height = stream.readInt32();     // Height in blocks
 
         // Validate dimensions
         if (this.width <= 0 || this.height <= 0 ||
@@ -502,14 +502,11 @@ class ChunkHeader {
             throw new Error(`Invalid chunk header dimensions: ${this.width}x${this.height}`);
         }
 
-        // The block array starts immediately after the header
-        const blockArrayOffset = offset + 12;
-        const numBlocks = this.width * this.height;
-
         // Read the flexible array of block offsets
+        const numBlocks = this.width * this.height;
         this.blocks = new Array(numBlocks);
         for (let i = 0; i < numBlocks; i++) {
-            this.blocks[i] = dataView.getUint32(blockArrayOffset + (i * 4), true);
+            this.blocks[i] = stream.readUint32();
         }
 
         // Calculate total header size (for debugging/verification)
@@ -705,7 +702,7 @@ class BitmapData {
             console.log('Bitmap has no pixel data');
             return bitmap;
         }
-        
+
         // Create a dedicated buffer for this bitmap's data
         const bitmapBuffer = new ArrayBuffer(bitmap.datasize);
         const bitmapData = new Uint8Array(bitmapBuffer);
@@ -724,7 +721,7 @@ class BitmapData {
         if (bitmap.flags.bm_compressed) {
             if (bitmap.flags.bm_chunked) {
                 // The bitmap data directly points to a ChunkHeader
-                const mainHeader = new ChunkHeader(new DataView(arrayBuffer), baseOffset);
+                const mainHeader = new ChunkHeader(bitmapStream);
 
                 // Allocate the final bitmap data
                 if (bitmap.flags.bm_8bit) {
