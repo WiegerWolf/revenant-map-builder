@@ -1091,7 +1091,9 @@ class CGSResourceParser {
         // Skip unknown data
         const unknownDataSize = header.hdrsize - 12 - (72 * header.numStates);
         if (unknownDataSize > 0) {
-            stream.skip(unknownDataSize);
+            // stream.skip(unknownDataSize);
+            console.warn(`Attempt to skip ${unknownDataSize} bytes of unknown data prevented`);
+            debugger;
         }
 
         // Read bitmap offsets
