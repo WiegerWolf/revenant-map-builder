@@ -687,6 +687,8 @@ class BitmapData {
             datasize: stream.readUint32(),      // Size of pixel data
         };
 
+        if (bitmap.flags.bm_5bitpal) debugger;
+
         // Sanity checks
         if (bitmap.width > 8192 || bitmap.height > 8192) {
             throw new Error('Corrupted bitmap dimensions');
@@ -1104,12 +1106,31 @@ class CGSResourceParser {
             imageryMetaData.push(metaData);
         }
 
+        // After all states are read, process walkmap data for states that have it
+        for (const metaData of imageryMetaData) {
+            if (metaData.walkmap !== 0 && metaData.wwidth > 0 && metaData.wlength > 0) {
+                const walkmapSize = metaData.wwidth * metaData.wlength;
+                metaData.walkmapData = new Uint8Array(walkmapSize);
+                for (let j = 0; j < walkmapSize; j++) {
+                    metaData.walkmapData[j] = stream.readUint8();
+                }
+
+                // Add padding to align to 4 bytes
+                const padding = (4 - (walkmapSize % 4)) % 4;
+                if (padding > 0) {
+                    stream.skip(padding);
+                }
+            }
+        }
+
         // Skip unknown data
         const unknownDataSize = header.hdrsize - 12 - (72 * header.numStates);
         if (unknownDataSize > 0) {
             // stream.skip(unknownDataSize);
             console.warn(`Attempt to skip ${unknownDataSize} bytes of unknown data prevented`);
-            debugger;
+            if (unknownDataSize > 16) {
+                debugger;
+            }
         }
 
         // Read bitmap offsets
