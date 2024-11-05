@@ -913,11 +913,19 @@ class BitmapDebug {
                         const index = y * bitmap.width + x;
                         if (index < bitmap.data.length) {
                             const paletteIndex = bitmap.data[index];
-                            if (paletteIndex < 256 && bitmap.palette.rgbcolors) {
-                                const rgbColor = bitmap.palette.rgbcolors[paletteIndex];
-                                r = (rgbColor >> 16) & 0xFF;
-                                g = (rgbColor >> 8) & 0xFF;
-                                b = rgbColor & 0xFF;
+                            if (paletteIndex < 256 && bitmap.palette.colors) {
+                                // Use the 16-bit color value from colors array instead of rgbcolors
+                                const colorData = bitmap.palette.colors[paletteIndex];
+
+                                // Convert 16-bit color to RGB components
+                                const red = (colorData & 0xF800) >> 11;    // Extract top 5 bits
+                                const green = (colorData & 0x07E0) >> 5;   // Extract middle 6 bits
+                                const blue = (colorData & 0x001F);         // Extract bottom 5 bits
+
+                                // Convert to 8-bit color values
+                                r = (red * 255) / 31;      // Scale 5-bit to 8-bit
+                                g = (green * 255) / 63;    // Scale 6-bit to 8-bit
+                                b = (blue * 255) / 31;     // Scale 5-bit to 8-bit
                             }
                         }
                     }
