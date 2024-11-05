@@ -1038,18 +1038,23 @@ class CGSResourceParser {
                     : header.datasize;
                 const bitmapSize = nextOffset - currentOffset;
 
-                // Create a view of just this bitmap's data
-                const bitmapData = new Uint8Array(
+                // Create a new ArrayBuffer specifically for this bitmap
+                const bitmapBuffer = new ArrayBuffer(bitmapSize);
+                const bitmapData = new Uint8Array(bitmapBuffer);
+
+                // Copy the bitmap data from the original buffer
+                const sourceData = new Uint8Array(
                     arrayBuffer,
                     stream.getPos() + currentOffset,
                     bitmapSize
                 );
+                bitmapData.set(sourceData);
 
-                // Create a stream just for this bitmap's data
-                const bitmapStream = new InputStream(bitmapData.buffer);
+                // Create a stream with the isolated bitmap data
+                const bitmapStream = new InputStream(bitmapBuffer);
 
                 // Read bitmap (now starting from position 0 since we have isolated data)
-                const bitmap = BitmapData.readBitmap(bitmapStream, bitmapData.buffer);
+                const bitmap = BitmapData.readBitmap(bitmapStream, bitmapBuffer);
 
                 // Get the relative path and save bitmap
                 const relativePath = filePath
