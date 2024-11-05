@@ -712,6 +712,7 @@ class BitmapData {
             // Validate palette size
             if (bitmap.palettesize !== expectedSize) {
                 console.warn(`Unexpected palette size: ${bitmap.palettesize} bytes (expected ${expectedSize} bytes)`);
+                debugger;
             }
 
             // Validate that the palette data fits within the buffer
