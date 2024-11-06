@@ -707,19 +707,46 @@ class BitmapData {
             regy: stream.readInt32(),
             flags: new BitmapFlags(stream.readUint32()),
             drawmode: new DrawModeFlags(stream.readUint32()),
-            keycolor: stream.readUint32(),      // Color to use as Transparent color
-            aliassize: stream.readUint32(),     // Size of Alias Buffer
-            alias: stream.readUint32(),         // Relative Offset to alias data
-            alphasize: stream.readUint32(),     // Size of Alpha Buffer
-            alpha: stream.readUint32(),         // Offset to alpha data
-            zbuffersize: stream.readUint32(),   // Size of ZBuffer
-            zbuffer: stream.readUint32(),       // Offset to zbuffer data
-            normalsize: stream.readUint32(),    // Size of Normal Buffer
-            normal: stream.readUint32(),        // Offset to normal data
-            palettesize: stream.readUint32(),   // Size of Palette
-            palette: stream.readUint32(),       // Relative Offset to Palette data
-            datasize: stream.readUint32(),      // Size of pixel data
+            keycolor: stream.readUint32(),
         };
+
+        // Read sizes and offsets, adjusting the offsets based on their position
+        bitmap.aliassize = stream.readUint32();
+        const aliasOffsetPos = stream.getPos();
+        bitmap.alias = stream.readUint32();
+        if (bitmap.alias !== 0) {
+            bitmap.alias += aliasOffsetPos;
+        }
+
+        bitmap.alphasize = stream.readUint32();
+        const alphaOffsetPos = stream.getPos();
+        bitmap.alpha = stream.readUint32();
+        if (bitmap.alpha !== 0) {
+            bitmap.alpha += alphaOffsetPos;
+        }
+
+        bitmap.zbuffersize = stream.readUint32();
+        const zbufferOffsetPos = stream.getPos();
+        bitmap.zbuffer = stream.readUint32();
+        if (bitmap.zbuffer !== 0) {
+            bitmap.zbuffer += zbufferOffsetPos;
+        }
+
+        bitmap.normalsize = stream.readUint32();
+        const normalOffsetPos = stream.getPos();
+        bitmap.normal = stream.readUint32();
+        if (bitmap.normal !== 0) {
+            bitmap.normal += normalOffsetPos;
+        }
+
+        bitmap.palettesize = stream.readUint32();
+        const paletteOffsetPos = stream.getPos();
+        bitmap.palette = stream.readUint32();
+        if (bitmap.palette !== 0) {
+            bitmap.palette += paletteOffsetPos;
+        }
+
+        bitmap.datasize = stream.readUint32();
 
         // Sanity checks
         if (bitmap.width > 8192 || bitmap.height > 8192) {
@@ -791,27 +818,27 @@ class BitmapData {
                             // Calculate the starting position in the bitmap data
                             const blockWidth = ChunkDecompressor.CHUNK_WIDTH;  // 64
                             const blockHeight = ChunkDecompressor.CHUNK_HEIGHT; // 64
-                            
+
                             // Starting position for this block in the destination bitmap
                             const destX = x * blockWidth;
                             const destY = y * blockHeight;
-                            
+
                             // Copy each row of the decompressed data to the correct position
                             for (let row = 0; row < blockHeight; row++) {
                                 // Skip if we're past the bitmap height
                                 if (destY + row >= bitmap.height) break;
-                                
+
                                 // Calculate source and destination positions for this row
                                 const srcOffset = row * blockWidth;
                                 const dstOffset = (destY + row) * bitmap.width + destX;
-                                
+
                                 // Calculate how many pixels to copy (handle edge cases)
                                 const pixelsToCopy = Math.min(
                                     blockWidth,                    // Standard block width
                                     bitmap.width - destX,          // Available width in destination
                                     decompressed.length - srcOffset // Available data in source
                                 );
-                                
+
                                 // Copy the row
                                 bitmap.data.set(
                                     decompressed.subarray(srcOffset, srcOffset + pixelsToCopy),
@@ -846,7 +873,7 @@ class BitmapData {
 
         // Handle palette data if present
         if (bitmap.palettesize > 0 && bitmap.palette > 0) {
-            const paletteOffset = baseOffset + bitmap.palette - 8;//hack!!!
+            const paletteOffset = bitmap.palette;
             const expectedSize = (256 * 2) + (256 * 4); // 256 * (2 bytes for colors + 4 bytes for rgbcolors)
 
             // Validate palette size
