@@ -720,9 +720,9 @@ class BitmapData {
                             continue;
                         }
 
+                        // Process non-blank block
                         const blockOffset = mainHeader.getBlockOffset(x, y);
                         const blockSize = mainHeader.getBlockSize(x, y);
-                        // Process non-blank block
                         const {buffer: blockBuffer, stream: blockStream} = BufferUtils.createBufferSlice(
                             bitmapBuffer,
                             blockOffset,
