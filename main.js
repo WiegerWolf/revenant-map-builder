@@ -957,7 +957,7 @@ class BitmapData {
     }
 }
 
-class BitmapDebug {
+class BitmapRender {
     static async saveToBMP(bitmap, outputPath) {
         // First, let's validate the input
         if (!bitmap || !bitmap.width || !bitmap.height || !bitmap.data) {
@@ -1274,7 +1274,7 @@ class CGSResourceParser {
                 );
 
                 await fs.mkdir(path.dirname(outputPath), { recursive: true });
-                await BitmapDebug.saveToBMP(bitmap, outputPath);
+                await BitmapRender.saveToBMP(bitmap, outputPath);
 
                 // Perform sanity checks and conversions
                 if (bitmap.width > 8192 || bitmap.height > 8192) {
