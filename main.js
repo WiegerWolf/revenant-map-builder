@@ -610,7 +610,11 @@ class ChunkHeader {
 class ChunkDecompressor {
     static decompressChunk(stream, blockWidth, blockHeight, clear = 1) {
         // Get chunk number from stream
-        const number = stream.readUint32();
+        const number = stream.readUint8();
+        const bite1 = stream.readUint8();
+        const bite2 = stream.readUint8();
+        const bite3 = stream.readUint8();
+        console.log(`Decompressing chunk ${number} with flags ${bite1} ${bite2} ${bite3}`);
 
         // Get compression markers
         const rleMarker = stream.readUint8();
