@@ -788,10 +788,36 @@ class BitmapData {
 
                         // Copy the decompressed chunk to the right position
                         if (bitmap.flags.bm_8bit) {
-                            bitmap.data.set(
-                                decompressed,
-                                (y * mainHeader.height + x) * mainHeader.height * mainHeader.width
-                            );
+                            // Calculate the starting position in the bitmap data
+                            const blockWidth = ChunkDecompressor.CHUNK_WIDTH;  // 64
+                            const blockHeight = ChunkDecompressor.CHUNK_HEIGHT; // 64
+                            
+                            // Starting position for this block in the destination bitmap
+                            const destX = x * blockWidth;
+                            const destY = y * blockHeight;
+                            
+                            // Copy each row of the decompressed data to the correct position
+                            for (let row = 0; row < blockHeight; row++) {
+                                // Skip if we're past the bitmap height
+                                if (destY + row >= bitmap.height) break;
+                                
+                                // Calculate source and destination positions for this row
+                                const srcOffset = row * blockWidth;
+                                const dstOffset = (destY + row) * bitmap.width + destX;
+                                
+                                // Calculate how many pixels to copy (handle edge cases)
+                                const pixelsToCopy = Math.min(
+                                    blockWidth,                    // Standard block width
+                                    bitmap.width - destX,          // Available width in destination
+                                    decompressed.length - srcOffset // Available data in source
+                                );
+                                
+                                // Copy the row
+                                bitmap.data.set(
+                                    decompressed.subarray(srcOffset, srcOffset + pixelsToCopy),
+                                    dstOffset
+                                );
+                            }
                         } else {
                             console.warn('Unsupported bitmap format, will be implmented later' + bitmap.flags);
                             debugger;
