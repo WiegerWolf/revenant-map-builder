@@ -514,9 +514,6 @@ class DrawModeFlags {
 }
 
 class ChunkHeader {
-    static CHUNK_WIDTH = 64;
-    static CHUNK_HEIGHT = 64;
-
     constructor(stream) {
         // Read the fixed part of the header
         this.type = stream.readUint32();      // Compressed flag
@@ -566,101 +563,34 @@ class ChunkHeader {
     }
 }
 
-class ChunkCache {
-    static CHUNK_WIDTH = 64;
-    static CHUNK_HEIGHT = 64;
-
-    constructor(megabytes) {
-        // Calculate number of chunks that can fit in specified megabytes
-        this.numChunks = Math.floor((megabytes * 1024 * 1024) /
-            (ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT * 3));
-
-        // Equivalent to chunks array - stores chunk data views
-        this.chunks = new Array(this.numChunks).fill(null);
-
-        // Equivalent to id array - stores chunk numbers
-        this.id = new Int32Array(this.numChunks);
-
-        // Equivalent to used array - stores last access cycle
-        this.used = new Int32Array(this.numChunks);
-
-        // Pre-allocate single buffer for all chunks
-        this.chunkBuffer = new Uint8Array(
-            ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT * this.numChunks
-        );
-
-        // Usage counter
-        this.currentCycle = 0;
-    }
-
-    addChunk(chunk, type) {
-        // Null checks
-        if (!chunk || !this.chunks) {
-            return null;
-        }
-
-        const result = new Uint8Array(ChunkCache.CHUNK_WIDTH * ChunkCache.CHUNK_HEIGHT);
-
-        // Decompress the chunk
-        const resultNumber = ChunkDecompressor.decompressChunk(
-            chunk,
-            result,
-            type
-        );
-
-        // Return pointer to decompressed chunk
-        return result;
-    }
-
-    // Helper method to get a chunk's data
-    getChunk(index) {
-        if (index < 0 || index >= this.numChunks) {
-            return null;
-        }
-        return this.chunks[index];
-    }
-
-    // Helper method to check if a chunk exists
-    hasChunk(number) {
-        return this.id.includes(number);
-    }
-
-    // Helper method to clear the cache
-    clear() {
-        this.chunks.fill(null);
-        this.id.fill(0);
-        this.used.fill(0);
-        this.currentCycle = 0;
-    }
-}
-
 class ChunkDecompressor {
     static CHUNK_WIDTH = 64;
     static CHUNK_HEIGHT = 64;
 
-    static decompressChunk(source, dest, clear) {
+    static decompressChunk(source, clear = 1) {
         // Get chunk number from first 4 bytes
         const view = new DataView(source.buffer, source.byteOffset);
         const number = view.getInt32(0, true);
-
+    
         // Get compression markers from header
         const rleMarker = source[4];
         const lzMarker = source[5];
-
-        // Clear destination buffer
+    
+        // Create destination buffer
+        const dest = new Uint8Array(ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT);
         const clearValue = clear === 1 ? 0x00 : 0xFF;
         dest.fill(clearValue);
-
+    
         let srcPos = 6;  // After header
         let dstPos = 0;
-
+    
         while (dstPos < ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT) {
             const byte = source[srcPos++];
-
+    
             if (byte === rleMarker) {
                 // RLE compression
                 let count = source[srcPos++];
-
+    
                 if (count & 0x80) {
                     // Skip RLE
                     count &= 0x7F;
@@ -677,7 +607,7 @@ class ChunkDecompressor {
                 const count = source[srcPos++];
                 const offset = view.getUint16(srcPos, true);
                 srcPos += 2;
-
+    
                 // Copy from earlier in the output
                 for (let i = 0; i < count; i++) {
                     dest[dstPos] = dest[dstPos - offset];
@@ -688,9 +618,12 @@ class ChunkDecompressor {
                 dest[dstPos++] = byte;
             }
         }
-
-        return number;
-    }
+    
+        return {
+            number,
+            data: dest
+        };
+    }    
 }
 
 class BitmapData {
@@ -759,8 +692,6 @@ class BitmapData {
                     bitmap.data = new Uint32Array(bitmap.width * bitmap.height * 1);
                 }
 
-                const cache = new ChunkCache(64);
-
                 // Process each block
                 for (let y = 0; y < mainHeader.height; y++) {
                     for (let x = 0; x < mainHeader.width; x++) {
@@ -772,24 +703,24 @@ class BitmapData {
                         const blockOffset = mainHeader.getBlockOffset(x, y);
                         // Process non-blank block
                         const chunkData = new Uint8Array(bitmapBuffer, blockOffset);
-                        const decompressed = cache.addChunk(chunkData, 1);
+                        const { number, decompressed } = ChunkDecompressor.decompressChunk(chunkData);
 
                         // Copy the decompressed chunk to the right position
-                        const destX = x * ChunkCache.CHUNK_WIDTH;
-                        const destY = y * ChunkCache.CHUNK_HEIGHT;
+                        const destX = x * ChunkDecompressor.CHUNK_WIDTH;
+                        const destY = y * ChunkDecompressor.CHUNK_HEIGHT;
 
                         // Make sure we don't copy beyond bitmap boundaries
                         const copyWidth = Math.min(
-                            ChunkCache.CHUNK_WIDTH,
+                            ChunkDecompressor.CHUNK_WIDTH,
                             bitmap.width - destX
                         );
                         const copyHeight = Math.min(
-                            ChunkCache.CHUNK_HEIGHT,
+                            ChunkDecompressor.CHUNK_HEIGHT,
                             bitmap.height - destY
                         );
 
                         for (let cy = 0; cy < copyHeight; cy++) {
-                            const srcOffset = cy * ChunkCache.CHUNK_WIDTH;
+                            const srcOffset = cy * ChunkDecompressor.CHUNK_WIDTH;
                             const dstOffset = ((destY + cy) * bitmap.width) + destX;
                             bitmap.data.set(
                                 decompressed.subarray(srcOffset, srcOffset + copyWidth),
