@@ -680,8 +680,10 @@ class ChunkDecompressor {
                 }
             }
         } catch (e) {
-            console.error("Error decompressing chunk:", e);
-            debugger;
+            if (!(e instanceof EOFError)) {
+                console.error("Error decompressing chunk:", e);
+                debugger;
+            }
         }
 
         // Trim the array to actual size
@@ -771,7 +773,12 @@ class BitmapData {
 
                         // Process non-blank block
                         const blockOffset = mainHeader.getBlockOffset(x, y);
-                        const blockSize = mainHeader.getBlockSize(x, y);
+                        let blockSize = mainHeader.getBlockSize(x, y);
+                        if (blockSize === 0) {
+                            // This is a special case where the block size is 0,
+                            // which means it's the last block in the file
+                            blockSize = bitmapBuffer.byteLength - blockOffset;
+                        }
                         const { buffer: blockBuffer, stream: blockStream } = BufferUtils.createBufferSlice(
                             bitmapBuffer,
                             blockOffset,
@@ -780,26 +787,14 @@ class BitmapData {
                         const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockStream);
 
                         // Copy the decompressed chunk to the right position
-                        const destX = x * ChunkDecompressor.CHUNK_WIDTH;
-                        const destY = y * ChunkDecompressor.CHUNK_HEIGHT;
-
-                        // Make sure we don't copy beyond bitmap boundaries
-                        const copyWidth = Math.min(
-                            ChunkDecompressor.CHUNK_WIDTH,
-                            bitmap.width - destX
-                        );
-                        const copyHeight = Math.min(
-                            ChunkDecompressor.CHUNK_HEIGHT,
-                            bitmap.height - destY
-                        );
-
-                        for (let cy = 0; cy < copyHeight; cy++) {
-                            const srcOffset = cy * ChunkDecompressor.CHUNK_WIDTH;
-                            const dstOffset = ((destY + cy) * bitmap.width) + destX;
+                        if (bitmap.flags.bm_8bit) {
                             bitmap.data.set(
-                                decompressed.subarray(srcOffset, srcOffset + copyWidth),
-                                dstOffset
+                                decompressed,
+                                (y * mainHeader.height + x) * mainHeader.height * mainHeader.width
                             );
+                        } else {
+                            console.warn('Unsupported bitmap format, will be implmented later' + bitmap.flags);
+                            debugger;
                         }
                     }
                 }
