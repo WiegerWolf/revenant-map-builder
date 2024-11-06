@@ -608,10 +608,7 @@ class ChunkHeader {
 }
 
 class ChunkDecompressor {
-    static CHUNK_WIDTH = 64;
-    static CHUNK_HEIGHT = 64;
-
-    static decompressChunk(stream, clear = 1) {
+    static decompressChunk(stream, blockWidth, blockHeight, clear = 1) {
         // Get chunk number from stream
         const number = stream.readInt32();
 
@@ -620,7 +617,8 @@ class ChunkDecompressor {
         const lzMarker = stream.readUint8();
 
         // Create destination buffer (start with expected size, but might grow)
-        let dest = new Uint8Array(ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT);
+        // Create destination buffer with the correct size
+        let dest = new Uint8Array(blockWidth * blockHeight);
         const clearValue = clear === 1 ? 0x00 : 0xFF;
         dest.fill(clearValue);
 
@@ -798,6 +796,13 @@ class BitmapData {
                             continue;
                         }
 
+                        // Calculate the block width and height for each block
+                        const blockWidth = BitmapData.calculateBlockWidth(x, bitmap, mainHeader);
+                        const blockHeight = BitmapData.calculateBlockHeight(y, bitmap, mainHeader);
+
+                        const destX = x * BitmapData.calculateBlockWidth(0, bitmap, mainHeader);
+                        const destY = y * BitmapData.calculateBlockHeight(0, bitmap, mainHeader);
+
                         // Process non-blank block
                         const blockOffset = mainHeader.getBlockOffset(x, y);
                         let blockSize = mainHeader.getBlockSize(x, y);
@@ -811,18 +816,10 @@ class BitmapData {
                             blockOffset,
                             blockSize
                         );
-                        const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockStream);
+                        const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockStream, blockWidth, blockHeight);
 
                         // Copy the decompressed chunk to the right position
                         if (bitmap.flags.bm_8bit) {
-                            // Calculate the starting position in the bitmap data
-                            const blockWidth = ChunkDecompressor.CHUNK_WIDTH;  // 64
-                            const blockHeight = ChunkDecompressor.CHUNK_HEIGHT; // 64
-
-                            // Starting position for this block in the destination bitmap
-                            const destX = x * blockWidth;
-                            const destY = y * blockHeight;
-
                             // Copy each row of the decompressed data to the correct position
                             for (let row = 0; row < blockHeight; row++) {
                                 // Skip if we're past the bitmap height
@@ -834,9 +831,9 @@ class BitmapData {
 
                                 // Calculate how many pixels to copy (handle edge cases)
                                 const pixelsToCopy = Math.min(
-                                    blockWidth,                    // Standard block width
-                                    bitmap.width - destX,          // Available width in destination
-                                    decompressed.length - srcOffset // Available data in source
+                                    blockWidth,                       // Pixels in this row in the block
+                                    bitmap.width - destX,             // Available width in destination
+                                    decompressed.length - srcOffset   // Available data in source
                                 );
 
                                 // Copy the row
@@ -940,6 +937,26 @@ class BitmapData {
         }
 
         return bitmap;
+    }
+    // Helper functions to calculate block dimensions
+    static calculateBlockWidth(x, bitmap, mainHeader) {
+        const baseBlockWidth = Math.floor(bitmap.width / mainHeader.width);
+        if (x < mainHeader.width - 1) {
+            return baseBlockWidth;
+        } else {
+            // Last block may be wider if bitmap.width is not perfectly divisible
+            return bitmap.width - baseBlockWidth * (mainHeader.width - 1);
+        }
+    }
+
+    static calculateBlockHeight(y, bitmap, mainHeader) {
+        const baseBlockHeight = Math.floor(bitmap.height / mainHeader.height);
+        if (y < mainHeader.height - 1) {
+            return baseBlockHeight;
+        } else {
+            // Last block may be taller if bitmap.height is not perfectly divisible
+            return bitmap.height - baseBlockHeight * (mainHeader.height - 1);
+        }
     }
 }
 
