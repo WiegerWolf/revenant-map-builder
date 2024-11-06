@@ -556,6 +556,26 @@ class ChunkHeader {
         return y * this.width + x;
     }
 
+    getBlockSize(x, y) {
+        const currentIndex = this.getBlockIndex(x, y);
+        if (currentIndex === -1 || this.blocks[currentIndex] === 0) {
+            return 0;
+        }
+    
+        const currentOffset = this.blocks[currentIndex];
+    
+        // Look for the next non-zero block offset
+        for (let i = currentIndex + 1; i < this.blocks.length; i++) {
+            if (this.blocks[i] !== 0) {
+                return this.blocks[i] - currentOffset;
+            }
+        }
+    
+        // If we didn't find any non-zero blocks after this one,
+        // or if this is the last block, return 0
+        return 0;
+    }
+    
     // Helper method to get block offset from x,y coordinates
     getBlockOffset(x, y) {
         const index = this.getBlockIndex(x, y);
@@ -701,9 +721,14 @@ class BitmapData {
                         }
 
                         const blockOffset = mainHeader.getBlockOffset(x, y);
+                        const blockSize = mainHeader.getBlockSize(x, y);
                         // Process non-blank block
-                        const chunkData = new Uint8Array(bitmapBuffer, blockOffset);
-                        const { number, decompressed } = ChunkDecompressor.decompressChunk(chunkData);
+                        const {buffer: blockBuffer, stream: blockStream} = BufferUtils.createBufferSlice(
+                            bitmapBuffer,
+                            blockOffset,
+                            blockSize
+                        );
+                        const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockBuffer);
 
                         // Copy the decompressed chunk to the right position
                         const destX = x * ChunkDecompressor.CHUNK_WIDTH;
