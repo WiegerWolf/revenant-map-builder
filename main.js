@@ -884,35 +884,21 @@ class BitmapData {
 
             // Validate that the palette data fits within the buffer
             if (paletteOffset + expectedSize <= arrayBuffer.byteLength) {
-                // Ensure alignment
-                const alignedPaletteOffset = Math.ceil(paletteOffset / 2) * 2;
-                const alignedRGBOffset = Math.ceil((paletteOffset + 512) / 4) * 4;
+                const tempBuffer = new ArrayBuffer(expectedSize);
+                const tempColors = new Uint16Array(tempBuffer, 0, 256);
+                const tempRGBColors = new Uint32Array(tempBuffer, 512, 256);
 
-                try {
-                    bitmap.palette = {
-                        colors: new Uint16Array(arrayBuffer, alignedPaletteOffset, 256),
-                        rgbcolors: new Uint32Array(arrayBuffer, alignedRGBOffset, 256)
-                    };
-                } catch (e) {
-                    console.warn('Failed to create palette arrays:', e);
-
-                    // Alternative approach: create new arrays and copy data
-                    const tempBuffer = new ArrayBuffer(expectedSize);
-                    const tempColors = new Uint16Array(tempBuffer, 0, 256);
-                    const tempRGBColors = new Uint32Array(tempBuffer, 512, 256);
-
-                    // Copy data byte by byte
-                    const view = new DataView(arrayBuffer);
-                    for (let i = 0; i < 256; i++) {
-                        tempColors[i] = view.getUint16(paletteOffset + i * 2, true);
-                        tempRGBColors[i] = view.getUint32(paletteOffset + 512 + i * 4, true);
-                    }
-
-                    bitmap.palette = {
-                        colors: tempColors,
-                        rgbcolors: tempRGBColors
-                    };
+                // Copy data byte by byte
+                const view = new DataView(arrayBuffer);
+                for (let i = 0; i < 256; i++) {
+                    tempColors[i] = view.getUint16(paletteOffset + i * 2, true);
+                    tempRGBColors[i] = view.getUint32(paletteOffset + 512 + i * 4, true);
                 }
+
+                bitmap.palette = {
+                    colors: tempColors,
+                    rgbcolors: tempRGBColors
+                };
             } else {
                 console.warn('Palette data extends beyond buffer bounds');
             }
