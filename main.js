@@ -7,31 +7,42 @@ class InputStream {
         this.offset = 0;
     }
 
+    checkBounds(bytesToRead) {
+        if (this.offset + bytesToRead > this.dataView.byteLength) {
+            throw new EOFError();
+        }
+    }
+
     readInt32() {
-        const value = this.dataView.getInt32(this.offset, true); // true for little-endian
+        this.checkBounds(4);
+        const value = this.dataView.getInt32(this.offset, true);
         this.offset += 4;
         return value;
     }
 
     readInt16() {
+        this.checkBounds(2);
         const value = this.dataView.getInt16(this.offset, true);
         this.offset += 2;
         return value;
     }
 
     readUint32() {
+        this.checkBounds(4);
         const value = this.dataView.getUint32(this.offset, true);
         this.offset += 4;
         return value;
     }
 
     readUint16() {
+        this.checkBounds(2);
         const value = this.dataView.getUint16(this.offset, true);
         this.offset += 2;
         return value;
     }
 
     readUint8() {
+        this.checkBounds(1);
         const value = this.dataView.getUint8(this.offset);
         this.offset += 1;
         return value;
@@ -39,12 +50,14 @@ class InputStream {
 
     readString() {
         const length = this.readUint8();
+        this.checkBounds(length);
         const bytes = new Uint8Array(this.dataView.buffer, this.dataView.byteOffset + this.offset, length);
         this.offset += length;
         return new TextDecoder('ascii').decode(bytes);
     }
 
     skip(bytes) {
+        this.checkBounds(bytes);
         this.offset += bytes;
     }
 
@@ -54,6 +67,17 @@ class InputStream {
 
     getPos() {
         return this.offset;
+    }
+
+    eof() {
+        return this.offset >= this.dataView.byteLength;
+    }
+}
+
+class EOFError extends Error {
+    constructor(message = "End of file reached") {
+        super(message);
+        this.name = "EOFError";
     }
 }
 
@@ -561,21 +585,21 @@ class ChunkHeader {
         if (currentIndex === -1 || this.blocks[currentIndex] === 0) {
             return 0;
         }
-    
+
         const currentOffset = this.blocks[currentIndex];
-    
+
         // Look for the next non-zero block offset
         for (let i = currentIndex + 1; i < this.blocks.length; i++) {
             if (this.blocks[i] !== 0) {
                 return this.blocks[i] - currentOffset;
             }
         }
-    
+
         // If we didn't find any non-zero blocks after this one,
         // or if this is the last block, return 0
         return 0;
     }
-    
+
     // Helper method to get block offset from x,y coordinates
     getBlockOffset(x, y) {
         const index = this.getBlockIndex(x, y);
@@ -587,63 +611,88 @@ class ChunkDecompressor {
     static CHUNK_WIDTH = 64;
     static CHUNK_HEIGHT = 64;
 
-    static decompressChunk(source, clear = 1) {
-        // Get chunk number from first 4 bytes
-        const view = new DataView(source.buffer, source.byteOffset);
-        const number = view.getInt32(0, true);
-    
-        // Get compression markers from header
-        const rleMarker = source[4];
-        const lzMarker = source[5];
-    
-        // Create destination buffer
-        const dest = new Uint8Array(ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT);
+    static decompressChunk(stream, clear = 1) {
+        // Get chunk number from stream
+        const number = stream.readInt32();
+
+        // Get compression markers
+        const rleMarker = stream.readUint8();
+        const lzMarker = stream.readUint8();
+
+        // Create destination buffer (start with expected size, but might grow)
+        let dest = new Uint8Array(ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT);
         const clearValue = clear === 1 ? 0x00 : 0xFF;
         dest.fill(clearValue);
-    
-        let srcPos = 6;  // After header
+
         let dstPos = 0;
-    
-        while (dstPos < ChunkDecompressor.CHUNK_WIDTH * ChunkDecompressor.CHUNK_HEIGHT) {
-            const byte = source[srcPos++];
-    
-            if (byte === rleMarker) {
-                // RLE compression
-                let count = source[srcPos++];
-    
-                if (count & 0x80) {
-                    // Skip RLE
-                    count &= 0x7F;
-                    dstPos += count;
-                } else {
-                    // Normal RLE
-                    const value = source[srcPos++];
-                    for (let i = 0; i < count; i++) {
-                        dest[dstPos++] = value;
+
+        try {
+            while (!stream.eof()) {
+                const byte = stream.readUint8();
+
+                if (byte === rleMarker) {
+                    // RLE compression
+                    let count = stream.readUint8();
+
+                    if (count & 0x80) {
+                        // Skip RLE
+                        count &= 0x7F;
+                        dstPos += count;
+                    } else {
+                        // Normal RLE
+                        const value = stream.readUint8();
+                        // Ensure dest array is large enough
+                        if (dstPos + count > dest.length) {
+                            const newDest = new Uint8Array(dest.length * 2);
+                            newDest.set(dest);
+                            dest = newDest;
+                        }
+                        for (let i = 0; i < count; i++) {
+                            dest[dstPos++] = value;
+                        }
                     }
+                } else if (byte === lzMarker) {
+                    // LZ compression
+                    const count = stream.readUint8();
+                    const offset = stream.readUint16();
+
+                    // Ensure dest array is large enough
+                    if (dstPos + count > dest.length) {
+                        const newDest = new Uint8Array(dest.length * 2);
+                        newDest.set(dest);
+                        dest = newDest;
+                    }
+
+                    // Copy from earlier in the output
+                    for (let i = 0; i < count; i++) {
+                        dest[dstPos] = dest[dstPos - offset];
+                        dstPos++;
+                    }
+                } else {
+                    // Raw byte
+                    // Ensure dest array is large enough
+                    if (dstPos >= dest.length) {
+                        const newDest = new Uint8Array(dest.length * 2);
+                        newDest.set(dest);
+                        dest = newDest;
+                    }
+                    dest[dstPos++] = byte;
                 }
-            } else if (byte === lzMarker) {
-                // LZ compression
-                const count = source[srcPos++];
-                const offset = view.getUint16(srcPos, true);
-                srcPos += 2;
-    
-                // Copy from earlier in the output
-                for (let i = 0; i < count; i++) {
-                    dest[dstPos] = dest[dstPos - offset];
-                    dstPos++;
-                }
-            } else {
-                // Raw byte
-                dest[dstPos++] = byte;
             }
+        } catch (e) {
+            console.error("Error decompressing chunk:", e);
+            debugger;
         }
-    
+
+        // Trim the array to actual size
+        const finalDest = new Uint8Array(dstPos);
+        finalDest.set(dest.subarray(0, dstPos));
+
         return {
             number,
-            data: dest
+            data: finalDest
         };
-    }    
+    }
 }
 
 class BitmapData {
@@ -723,12 +772,12 @@ class BitmapData {
                         // Process non-blank block
                         const blockOffset = mainHeader.getBlockOffset(x, y);
                         const blockSize = mainHeader.getBlockSize(x, y);
-                        const {buffer: blockBuffer, stream: blockStream} = BufferUtils.createBufferSlice(
+                        const { buffer: blockBuffer, stream: blockStream } = BufferUtils.createBufferSlice(
                             bitmapBuffer,
                             blockOffset,
                             blockSize
                         );
-                        const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockBuffer);
+                        const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockStream);
 
                         // Copy the decompressed chunk to the right position
                         const destX = x * ChunkDecompressor.CHUNK_WIDTH;
