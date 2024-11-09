@@ -18,7 +18,7 @@ This project provides tools to parse and extract data from various file formats 
 - [x] Parse map files with object hierarchies
 - [x] Support for various object types (characters, items, weapons, etc.)
 - [x] Handle compressed and chunked bitmap data  (partially)
-- [] Convert between different color formats (8-bit, 15-bit, 16-bit, 24-bit, 32-bit)
+- [ ] Convert between different color formats (8-bit, 15-bit, 16-bit, 24-bit, 32-bit)
 - [x] File caching system for improved performance and for dealing with case-insensitive file systems
 
 ## Installation
@@ -44,10 +44,10 @@ Your best bet right now is to dive into `main.js` and see how it's used.
 - [x] Object definitions
 - [x] Position data
 - [x] State information
-- [] Inventory systems (partially)
+- [ ] Inventory systems (partially)
 - [x] Character data
 - [x] Container data
-- [] Exit data
+- [ ] Exit data
 
 ### Class Definitions (class.def files)
 - [x] Object types
@@ -60,9 +60,9 @@ Your best bet right now is to dive into `main.js` and see how it's used.
 The parser supports various data types used in the game:
 
 - [x] Bitmaps (various color depths)
-- [] 3D points
-- [] Colors
-- [] Light definitions
+- [ ] 3D points
+- [ ] Colors
+- [ ] Light definitions
 - [x] Object flags
 - [x] Animation flags
 - [x] Draw mode flags
