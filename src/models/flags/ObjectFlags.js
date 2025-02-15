@@ -30,6 +30,14 @@ class ObjectFlags {
         this.of_nocollision = !!parseInt(bits[31 - 24]);  // Let the object go through boundries
         this.of_iced = !!parseInt(bits[31 - 25]);         // Used to know when to end the iced effect
     }
+    // NOTE: OF_NONMAP
+    // ----------------
+    //
+    // OF_NONMAP tells the map system that this object is managed outside of the regular map
+    // system.  This object will not be LOADED, SAVED, CREATED, or DELETED by the map or
+    // sector system.  Any object with this flag can be inserted into the map and assume that
+    // it won't be deleted by the map system. This flag is intended for players, but can be used for
+    // other objects. 
 }
 
 export default ObjectFlags;

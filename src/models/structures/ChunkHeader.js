@@ -50,6 +50,9 @@ class ChunkHeader {
                 return this.blocks[i] - currentOffset;
             }
         }
+
+        // If we didn't find any non-zero blocks after this one,
+        // or if this is the last block, return 0
         return 0;
     }
 

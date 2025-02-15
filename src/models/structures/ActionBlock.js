@@ -1,7 +1,7 @@
-import S3DPoint from './S3DPoint';
+import ActionTypes from '../../constants/ActionTypes';
 
 class ActionBlock {
-    constructor(name, action = 1) { // ACTION_ANIMATE = 1
+    constructor(name, action = ActionTypes.ACTION_ANIMATE) {
         this.action = action;
         this.name = name;
         this.frame = 0;

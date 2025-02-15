@@ -11,7 +11,7 @@ class DrawModeFlags {
 
         // Drawing mode flags
         this.dm_stretch = !!parseInt(bits[31 - 3]);      // Enables Stretching when drawing
-        this.dm_background = !!parseInt(bits[31 - 4]);    // Draws bitmap to background
+        this.dm_background = !!parseInt(bits[31 - 4]);   // Draws bitmap to background
         this.dm_norestore = !!parseInt(bits[31 - 5]);    // Disables automatic background restoring
         this.dm_fill = !!parseInt(bits[31 - 29]);        // Fills the destination with the current color
 
@@ -20,7 +20,7 @@ class DrawModeFlags {
         this.dm_reversehorz = !!parseInt(bits[31 - 7]);  // Reverses horizontal orientation
 
         // Transparency and effects flags
-        this.dm_transparent = !!parseInt(bits[31 - 8]);   // Enables transparent drawing
+        this.dm_transparent = !!parseInt(bits[31 - 8]);  // Enables transparent drawing
         this.dm_shutter = !!parseInt(bits[31 - 14]);     // Enable Shutter transparent drawing
         this.dm_translucent = !!parseInt(bits[31 - 15]); // Enables Translucent drawing
         this.dm_fade = !!parseInt(bits[31 - 16]);        // Fade image to key color
@@ -73,6 +73,16 @@ class DrawModeFlags {
     usesZBuffer() {
         return this.dm_zmask || this.dm_zbuffer ||
             this.dm_zstatic || !this.dm_nocheckz;
+    }
+
+    toString() {
+        const flags = [];
+        for (const [key, value] of Object.entries(this)) {
+            if (value === true) {
+                flags.push(key);
+            }
+        }
+        return flags.join(' | ') || 'DM_DEFAULT';
     }
 }
 
