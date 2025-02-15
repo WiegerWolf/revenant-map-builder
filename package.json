@@ -1,0 +1,22 @@
+{
+  "name": "revenant-map-builder",
+  "version": "1.0.0",
+  "description": "A tool for parsing and building Revenant game map files",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "jest": "^29.0.0"
+  },
+  "keywords": [
+    "revenant",
+    "game",
+    "map",
+    "parser"
+  ],
+  "author": "",
+  "license": "MIT"
+}
