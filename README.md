@@ -32,6 +32,7 @@ npm install
 ## Usage
 
 Your best bet right now is to dive into `main.js` and see how it's used.
+
 ## File Structure Support
 
 ### IMAGERY.DAT
@@ -93,7 +94,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Original Revenant game developers
 - Game modding community in [Accursed Farms forums](https://www.accursedfarms.com/forums/topic/3301-revenant-maps/)
-- Contributors to the reverse engineering effort
+- Contributors to the reverse engineering effort https://discord.gg/tHB3nzn2
 
 ## Notes
 
