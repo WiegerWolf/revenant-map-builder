@@ -1,9 +1,9 @@
-const fs = require('fs').promises;
-const path = require('path');
-const { ImageryDatParser } = require('./parsers/ImageryDatParser');
-const { DatParser } = require('./parsers/DatParser');
-const { ClassDefParser } = require('./parsers/ClassDefParser');
-const { CGSResourceParser } = require('./parsers/CGSResourceParser');
+import { promises as fs } from 'fs';
+import path from 'path';
+import { ImageryDatParser } from './parsers/ImageryDatParser';
+import { DatParser } from './parsers/DatParser';
+import { ClassDefParser } from './parsers/ClassDefParser';
+import { CGSResourceParser } from './parsers/CGSResourceParser';
 
 async function loadFile(filePath) {
     try {
@@ -39,7 +39,7 @@ async function parseCGSResource(filePath) {
     return parser.parse();
 }
 
-module.exports = {
+export default {
     parseImageryDat,
     parseClassDef,
     parseDatFile,
