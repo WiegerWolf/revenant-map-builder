@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs';
-import { ImageryDatParser } from './parsers/ImageryDatParser';
-import { DatParser } from './parsers/DatParser';
-import { ClassDefParser } from './parsers/ClassDefParser';
-import { CGSResourceParser } from './parsers/CGSResourceParser';
+import { ImageryDatParser } from './parsers/ImageryDatParser.js';
+import { DatParser } from './parsers/DatParser.js';
+import ClassDefParser from './parsers/ClassDefParser.js';
+import { CGSResourceParser } from './parsers/CGSResourceParser.js';
 
 async function loadFile(filePath) {
     try {
