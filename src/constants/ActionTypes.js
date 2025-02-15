@@ -30,4 +30,4 @@ const ActionTypes = {
     ACTION_BOWSHOOT: 28
 };
 
-module.exports = ActionTypes;
+export default ActionTypes;

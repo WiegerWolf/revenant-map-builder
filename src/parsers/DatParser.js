@@ -1,5 +1,5 @@
-const { InputStream } = require('../utils/InputStream');
-const ObjectFlags = require('../models/flags/ObjectFlags');
+import { InputStream } from '../utils/InputStream';
+import ObjectFlags from '../models/flags/ObjectFlags';
 
 class DatParser {
     constructor(buffer) {
@@ -87,4 +87,4 @@ class DatParser {
     }
 }
 
-module.exports = DatParser;
+export default DatParser;

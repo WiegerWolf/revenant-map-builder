@@ -48,4 +48,4 @@ class S3DPoint {
     }
 }
 
-module.exports = S3DPoint;
+export default S3DPoint;

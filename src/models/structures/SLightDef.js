@@ -1,6 +1,6 @@
-const LightFlags = require('../flags/LightFlags');
-const S3DPoint = require('./S3DPoint');
-const SColor = require('./SColor');
+import LightFlags from '../flags/LightFlags';
+import S3DPoint from './S3DPoint';
+import SColor from './SColor';
 
 class SLightDef {
     constructor() {
@@ -14,4 +14,4 @@ class SLightDef {
     }
 }
 
-module.exports = SLightDef;
+export default SLightDef;

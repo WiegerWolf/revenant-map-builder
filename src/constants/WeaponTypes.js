@@ -23,4 +23,4 @@ const WeaponMask = {
     WM_CROSSBOW: 0x0080
 };
 
-module.exports = { WeaponType, WeaponMask };
+export default { WeaponType, WeaponMask };

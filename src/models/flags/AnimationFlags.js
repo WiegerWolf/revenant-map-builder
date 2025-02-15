@@ -50,4 +50,4 @@ class AnimationFlags {
     }
 }
 
-module.exports = AnimationFlags;
+export default AnimationFlags;

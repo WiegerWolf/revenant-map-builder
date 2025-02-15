@@ -1,4 +1,4 @@
-const { InputStream } = require('./InputStream');
+import { InputStream } from './InputStream';
 
 class BufferUtils {
     /**
@@ -27,4 +27,4 @@ class BufferUtils {
     }
 }
 
-module.exports = BufferUtils;
+export default BufferUtils;

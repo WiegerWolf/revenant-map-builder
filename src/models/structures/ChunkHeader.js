@@ -60,4 +60,4 @@ class ChunkHeader {
     }
 }
 
-module.exports = ChunkHeader;
+export default ChunkHeader;

@@ -1,4 +1,4 @@
-const { InputStream } = require('../utils/InputStream');
+import { InputStream } from '../utils/InputStream';
 
 class ClassDefParser {
     constructor(buffer) {
@@ -47,4 +47,4 @@ class ClassDefParser {
     }
 }
 
-module.exports = ClassDefParser;
+export default ClassDefParser;

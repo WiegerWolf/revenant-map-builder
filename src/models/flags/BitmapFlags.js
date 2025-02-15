@@ -64,4 +64,4 @@ class BitmapFlags {
     }
 }
 
-module.exports = BitmapFlags;
+export default BitmapFlags;

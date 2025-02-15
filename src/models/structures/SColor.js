@@ -6,4 +6,4 @@ class SColor {
     }
 }
 
-module.exports = SColor;
+export default SColor;

@@ -1,4 +1,4 @@
-const S3DPoint = require('./S3DPoint');
+import S3DPoint from './S3DPoint';
 
 class ActionBlock {
     constructor(name, action = 1) { // ACTION_ANIMATE = 1
@@ -19,4 +19,4 @@ class ActionBlock {
     }
 }
 
-module.exports = ActionBlock;
+export default ActionBlock;

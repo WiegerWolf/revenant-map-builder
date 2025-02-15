@@ -1,5 +1,5 @@
-const { InputStream } = require('../utils/InputStream');
-const { BufferUtils } = require('../utils/BufferUtils');
+import { InputStream } from '../utils/InputStream';
+import { BufferUtils } from '../utils/BufferUtils';
 
 class CGSResourceParser {
     constructor(buffer) {
@@ -79,4 +79,4 @@ class CGSResourceParser {
     };
 }
 
-module.exports = CGSResourceParser;
+export default CGSResourceParser;

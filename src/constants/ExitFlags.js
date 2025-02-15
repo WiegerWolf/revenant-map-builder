@@ -13,4 +13,4 @@ const ExitFlags = {
     EX_FROMEXIT: 1 << 2   // player just came from another exit.. don't do anything
 };
 
-module.exports = { ExitStates, ExitFlags };
+export default { ExitStates, ExitFlags };

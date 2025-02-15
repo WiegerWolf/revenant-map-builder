@@ -10,4 +10,4 @@ class LightFlags {
     }
 }
 
-module.exports = LightFlags;
+export default LightFlags;

@@ -76,4 +76,4 @@ class DrawModeFlags {
     }
 }
 
-module.exports = DrawModeFlags;
+export default DrawModeFlags;

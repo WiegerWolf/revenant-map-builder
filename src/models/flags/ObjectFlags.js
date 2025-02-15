@@ -32,4 +32,4 @@ class ObjectFlags {
     }
 }
 
-module.exports = ObjectFlags;
+export default ObjectFlags;

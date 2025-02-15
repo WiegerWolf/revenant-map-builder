@@ -1,7 +1,7 @@
-const { InputStream } = require('../utils/InputStream');
-const { BufferUtils } = require('../utils/BufferUtils');
-const BitmapFlags = require('../models/flags/BitmapFlags');
-const ChunkHeader = require('../models/structures/ChunkHeader');
+import { InputStream } from '../utils/InputStream';
+import { BufferUtils } from '../utils/BufferUtils';
+import BitmapFlags from '../models/flags/BitmapFlags';
+import ChunkHeader from '../models/structures/ChunkHeader';
 
 class ImageryDatParser {
     constructor(buffer) {
@@ -110,4 +110,4 @@ class ImageryDatParser {
     }
 }
 
-module.exports = ImageryDatParser;
+export default ImageryDatParser;

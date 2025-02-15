@@ -78,4 +78,4 @@ class InputStream {
     }
 }
 
-module.exports = { InputStream, EOFError };
+export default { InputStream, EOFError };
