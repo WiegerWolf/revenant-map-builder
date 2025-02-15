@@ -1,5 +1,5 @@
-const fs = require('fs').promises;
-const path = require("path");
+import { promises as fs } from 'fs';
+import { extname, join, dirname, relative, sep } from "path";
 
 class InputStream {
     constructor(arrayBuffer) {
@@ -253,7 +253,7 @@ class ImageryDatParser {
         // We need to load these files using the CGSResourceParser
 
         // First, determine if it's a 2D or 3D imagery based on the filename extension
-        const extension = path.extname(filename).toLowerCase();
+        const extension = extname(filename).toLowerCase();
         const is3D = extension === '.i3d';
 
         // Create a result object to store all imagery data
@@ -1274,13 +1274,13 @@ class CGSResourceParser {
                     .split('Resources/')[1]
                     .replace('.i2d', '');
 
-                const outputPath = path.join(
+                const outputPath = join(
                     '_OUTPUT',
                     relativePath,
                     `bitmap_${i}.bmp`
                 );
 
-                await fs.mkdir(path.dirname(outputPath), { recursive: true });
+                await fs.mkdir(dirname(outputPath), { recursive: true });
                 await BitmapRender.saveToBMP(bitmap, outputPath);
 
                 // Perform sanity checks and conversions
@@ -1581,7 +1581,7 @@ class DatParser {
     static classDefs = new Map();
 
     static async loadClassDefinitions(gameDir) {
-        const classDefPath = path.join(gameDir, 'Resources', 'class.def');
+        const classDefPath = join(gameDir, 'Resources', 'class.def');
         try {
             const classDefs = await ClassDefParser.loadFile(classDefPath);
             if (classDefs) {
@@ -2084,8 +2084,8 @@ class DatParser {
             const entries = await fs.readdir(dir, { withFileTypes: true });
 
             for (const entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-                const relativePath = path.relative(baseDir, fullPath).toLowerCase();
+                const fullPath = join(dir, entry.name);
+                const relativePath = relative(baseDir, fullPath).toLowerCase();
 
                 if (entry.isDirectory()) {
                     await scanDirectory(fullPath);
@@ -2101,7 +2101,7 @@ class DatParser {
 
     static async findRealPath(baseDir, searchPath) {
         // Normalize the search path
-        const normalizedSearch = searchPath.toLowerCase().replace(/\\/g, path.sep);
+        const normalizedSearch = searchPath.toLowerCase().replace(/\\/g, sep);
 
         // Initialize cache if needed
         if (this.fileCache.size === 0) {
@@ -2119,10 +2119,10 @@ class DatParser {
 
     static async loadResourceFile(gameDir, resourcePath) {
         try {
-            const resourcesDir = path.join(gameDir, 'Resources');
+            const resourcesDir = join(gameDir, 'Resources');
 
             // Prepend 'Imagery' to the resource path
-            const imageryPath = path.join('Imagery', resourcePath);
+            const imageryPath = join('Imagery', resourcePath);
 
             const realPath = await this.findRealPath(resourcesDir, imageryPath);
 
@@ -2636,9 +2636,9 @@ class ObjectFlags {
 }
 
 async function main() {
-    const gameDir = path.join('_INSTALLED_GAME', 'Revenant');
-    const mapDir = path.join(gameDir, 'Modules', 'Ahkuilon', 'Map');
-    const resourcesDir = path.join(gameDir, 'Resources');
+    const gameDir = join('_INSTALLED_GAME', 'Revenant');
+    const mapDir = join(gameDir, 'Modules', 'Ahkuilon', 'Map');
+    const resourcesDir = join(gameDir, 'Resources');
 
     try {
         // Build the file cache
@@ -2647,7 +2647,7 @@ async function main() {
 
         // Load IMAGERY.DAT first
         console.log('Loading IMAGERY.DAT...');
-        const imageryDatPath = path.join(resourcesDir, 'imagery.dat');
+        const imageryDatPath = join(resourcesDir, 'imagery.dat');
         const imageryData = await ImageryDatParser.loadFile(imageryDatPath, gameDir);
         if (imageryData) {
             console.log(`Loaded ${imageryData.entries.length} imagery entries`);
@@ -2661,7 +2661,7 @@ async function main() {
         const datFiles = files.filter(file => file.toLowerCase().endsWith('.dat'));
 
         for (const datFile of datFiles) {
-            const filePath = path.join(mapDir, datFile);
+            const filePath = join(mapDir, datFile);
             console.log(`Processing ${datFile}...`);
             const result = await DatParser.loadFile(filePath, gameDir);
             if (result && result.numObjects) {
