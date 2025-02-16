@@ -3,11 +3,13 @@ import { BufferUtils } from './BufferUtils';
 import { ChunkDecompressor } from './ChunkDecompressor';
 import { ChunkHeader } from './ChunkHeader';
 import { DrawModeFlags } from './DrawModeFlags';
+import { InputStream } from './InputStream';
+import type { BitmapDataType } from './types';
 
 export class BitmapData {
-    static readBitmap(stream, arrayBuffer) {
+    static readBitmap(stream: InputStream, arrayBuffer: ArrayBuffer): BitmapDataType {
         // Read the fixed-size header structure
-        const bitmap = {
+        const bitmap: BitmapDataType = {
             width: stream.readInt32(),
             height: stream.readInt32(),
             regx: stream.readInt32(),
@@ -15,6 +17,18 @@ export class BitmapData {
             flags: new BitmapFlags(stream.readUint32()),
             drawmode: new DrawModeFlags(stream.readUint32()),
             keycolor: stream.readUint32(),
+            aliassize: 0,
+            alias: 0,
+            alphasize: 0,
+            alpha: 0,
+            zbuffersize: 0,
+            zbuffer: 0,
+            normalsize: 0,
+            normal: 0,
+            palettesize: 0,
+            palette: 0,
+            datasize: 0,
+            data: null
         };
 
         // Read sizes and offsets, adjusting the offsets based on their position
@@ -128,7 +142,7 @@ export class BitmapData {
                         const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockStream, blockWidth, blockHeight);
 
                         // Copy the decompressed chunk to the right position
-                        if (bitmap.flags.bm_8bit) {
+                        if (bitmap.flags.bm_8bit && bitmap.data instanceof Uint8Array) {
                             // Copy each row of the decompressed data to the correct position
                             for (let row = 0; row < blockHeight; row++) {
                                 // Skip if we're past the bitmap height
@@ -152,7 +166,7 @@ export class BitmapData {
                                 );
                             }
                         } else {
-                            console.warn('Unsupported bitmap format, will be implmented later' + bitmap.flags);
+                            console.warn('Unsupported bitmap format, will be implemented later', bitmap.flags);
                             debugger;
                         }
                     }
@@ -178,10 +192,9 @@ export class BitmapData {
         }
 
         // Handle palette data if present
-        if (bitmap.palettesize > 0 && bitmap.palette > 0) {
+        if (bitmap.palettesize > 0 && typeof bitmap.palette === 'number' && bitmap.palette > 0) {
             const paletteOffset = bitmap.palette;
             const expectedSize = (256 * 2) + (256 * 4); // 256 * (2 bytes for colors + 4 bytes for rgbcolors)
-
 
             // Validate palette size
             if (bitmap.palettesize !== expectedSize) {
@@ -213,43 +226,44 @@ export class BitmapData {
 
         // Handle additional buffers if present and not compressed
         if (!bitmap.flags.bm_compressed) {
-            if (bitmap.flags.bm_zbuffer && bitmap.zbuffersize > 0) {
-                // bitmap.zbuffer = new Uint16Array(
-                //     arrayBuffer,
-                //     baseOffset + bitmap.zbuffer,
-                //     bitmap.zbuffersize / 2
-                // );
+            if (bitmap.flags.bm_zbuffer && bitmap.zbuffersize > 0 && typeof bitmap.zbuffer === 'number') {
+                bitmap.zbuffer = new Uint16Array(
+                    arrayBuffer,
+                    baseOffset + bitmap.zbuffer,
+                    bitmap.zbuffersize / 2
+                );
             }
 
-            if (bitmap.flags.bm_normals && bitmap.normalsize > 0) {
-                // bitmap.normal = new Uint16Array(
-                //     arrayBuffer,
-                //     baseOffset + bitmap.normal,
-                //     bitmap.normalsize / 2
-                // );
+            if (bitmap.flags.bm_normals && bitmap.normalsize > 0 && typeof bitmap.normal === 'number') {
+                bitmap.normal = new Uint16Array(
+                    arrayBuffer,
+                    baseOffset + bitmap.normal,
+                    bitmap.normalsize / 2
+                );
             }
 
-            if (bitmap.flags.bm_alpha && bitmap.alphasize > 0) {
-                // bitmap.alpha = new Uint8Array(
-                //     arrayBuffer,
-                //     baseOffset + bitmap.alpha,
-                //     bitmap.alphasize
-                // );
+            if (bitmap.flags.bm_alpha && bitmap.alphasize > 0 && typeof bitmap.alpha === 'number') {
+                bitmap.alpha = new Uint8Array(
+                    arrayBuffer,
+                    baseOffset + bitmap.alpha,
+                    bitmap.alphasize
+                );
             }
 
-            if (bitmap.flags.bm_alias && bitmap.aliassize > 0) {
-                // bitmap.alias = new Uint8Array(
-                //     arrayBuffer,
-                //     baseOffset + bitmap.alias,
-                //     bitmap.aliassize
-                // );
+            if (bitmap.flags.bm_alias && bitmap.aliassize > 0 && typeof bitmap.alias === 'number') {
+                bitmap.alias = new Uint8Array(
+                    arrayBuffer,
+                    baseOffset + bitmap.alias,
+                    bitmap.aliassize
+                );
             }
         }
 
         return bitmap;
     }
+
     // Helper functions to calculate block dimensions
-    static calculateBlockWidth(x, bitmap, mainHeader) {
+    private static calculateBlockWidth(x: number, bitmap: BitmapDataType, mainHeader: ChunkHeader): number {
         const baseBlockWidth = Math.floor(bitmap.width / mainHeader.width);
         if (x < mainHeader.width - 1) {
             return baseBlockWidth;
@@ -259,7 +273,7 @@ export class BitmapData {
         }
     }
 
-    static calculateBlockHeight(y, bitmap, mainHeader) {
+    private static calculateBlockHeight(y: number, bitmap: BitmapDataType, mainHeader: ChunkHeader): number {
         const baseBlockHeight = Math.floor(bitmap.height / mainHeader.height);
         if (y < mainHeader.height - 1) {
             return baseBlockHeight;
