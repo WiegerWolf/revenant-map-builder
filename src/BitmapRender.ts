@@ -1,3 +1,4 @@
+import { createCanvas } from 'canvas';
 import { promises as fs } from 'fs';
 import type { BitmapDataType } from './types';
 
@@ -10,42 +11,18 @@ export class BitmapRender {
             return;
         }
 
-        const headerSize = 14;
-        const infoSize = 40;
-        const bitsPerPixel = 24;
-        const bytesPerPixel = bitsPerPixel / 8;
+        // Create a canvas with the bitmap dimensions
+        const canvas = createCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d');
 
-        const rowSize = Math.floor((bitsPerPixel * bitmap.width + 31) / 32) * 4;
-        const paddingSize = rowSize - (bitmap.width * bytesPerPixel);
-        const imageSize = rowSize * bitmap.height;
-        const fileSize = headerSize + infoSize + imageSize;
+        // Create pixel data array (RGBA format)
+        const pixelData = new Uint8ClampedArray(bitmap.width * bitmap.height * 4);
 
-        const buffer = Buffer.alloc(fileSize);
-
-        // Write headers...
-        buffer.write('BM', 0);
-        buffer.writeUInt32LE(fileSize, 2);
-        buffer.writeUInt32LE(0, 6);
-        buffer.writeUInt32LE(headerSize + infoSize, 10);
-
-        buffer.writeUInt32LE(infoSize, 14);
-        buffer.writeInt32LE(bitmap.width, 18);
-        buffer.writeInt32LE(bitmap.height, 22);
-        buffer.writeUInt16LE(1, 26);
-        buffer.writeUInt16LE(bitsPerPixel, 28);
-        buffer.writeUInt32LE(0, 30);
-        buffer.writeUInt32LE(imageSize, 34);
-        buffer.writeInt32LE(0, 38);
-        buffer.writeInt32LE(0, 42);
-        buffer.writeUInt32LE(0, 46);
-        buffer.writeUInt32LE(0, 50);
-
-        let offset = headerSize + infoSize;
-
-        // Pixel data writing with more defensive checks
-        for (let y = bitmap.height - 1; y >= 0; y--) {
+        // Process pixels based on bitmap format
+        for (let y = 0; y < bitmap.height; y++) {
             for (let x = 0; x < bitmap.width; x++) {
-                let r = 0, g = 0, b = 0;
+                const pixelIndex = (y * bitmap.width + x) * 4;
+                let r = 0, g = 0, b = 0, a = 255;
 
                 try {
                     if (bitmap.flags.bm_8bit && bitmap.palette && typeof bitmap.palette === 'object') {
@@ -54,20 +31,14 @@ export class BitmapRender {
                             const paletteIndex = (bitmap.data as Uint8Array)[index];
                             if (paletteIndex < 256) {
                                 if (bitmap.flags.bm_5bitpal) {
-                                    // Use the 16-bit color value from colors array for 5-bit palette
                                     const colorData = bitmap.palette.colors[paletteIndex];
-
-                                    // Convert 16-bit color to RGB components
-                                    const red = (colorData & 0xF800) >> 11; // Extract top 5 bits
-                                    const green = (colorData & 0x07E0) >> 5; // Extract middle 6 bits
-                                    const blue = (colorData & 0x001F); // Extract bottom 5 bits
-
-                                    // Convert to 8-bit color values
-                                    r = (red * 255) / 31; // Scale 5-bit to 8-bit
-                                    g = (green * 255) / 63; // Scale 6-bit to 8-bit
-                                    b = (blue * 255) / 31; // Scale 5-bit to 8-bit
+                                    const red = (colorData & 0xF800) >> 11;
+                                    const green = (colorData & 0x07E0) >> 5;
+                                    const blue = (colorData & 0x001F);
+                                    r = (red * 255) / 31;
+                                    g = (green * 255) / 63;
+                                    b = (blue * 255) / 31;
                                 } else {
-                                    // Use the 32-bit rgbcolors array for regular palette
                                     const rgbColor = bitmap.palette.rgbcolors[paletteIndex];
                                     r = (rgbColor >> 16) & 0xFF;
                                     g = (rgbColor >> 8) & 0xFF;
@@ -113,18 +84,22 @@ export class BitmapRender {
                     }
                 } catch (error) {
                     console.warn(`Error processing pixel at ${x},${y}:`, error);
-                    // Continue with default black pixel
                 }
 
-                // Write the pixel
-                buffer[offset++] = b;
-                buffer[offset++] = g;
-                buffer[offset++] = r;
+                // Set RGBA values in the pixel data array
+                pixelData[pixelIndex] = r;     // R
+                pixelData[pixelIndex + 1] = g; // G
+                pixelData[pixelIndex + 2] = b; // B
+                pixelData[pixelIndex + 3] = a; // A
             }
-
-            offset += paddingSize;
         }
 
+        // Create ImageData and put it on the canvas
+        const imageData = new ImageData(pixelData, bitmap.width, bitmap.height);
+        ctx.putImageData(imageData, 0, 0);
+
+        // Save the canvas to a file
+        const buffer = canvas.toBuffer('image/png');
         await fs.writeFile(outputPath, buffer);
     }
 }
