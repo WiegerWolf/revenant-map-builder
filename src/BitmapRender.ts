@@ -30,6 +30,11 @@ export class BitmapRender {
     }
 
     private static getPaletteColor(palette: Palette, index: number, use5BitPal: boolean = false): RGBColor {
+        // Make index 0 transparent
+        if (index === 0) {
+            return { r: 0, g: 0, b: 0, a: 0 };
+        }
+
         if (index >= 256) {
             return { r: 0, g: 0, b: 0, a: 255 };
         }
