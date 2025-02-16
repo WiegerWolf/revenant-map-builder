@@ -29,6 +29,60 @@ export class BitmapRender {
         await fs.writeFile(outputPath, buffer);
     }
 
+    static async renderPaletteDebug(palette: Palette, outputPath: string): Promise<void> {
+        // Create a canvas with 16x16 grid of colors (256 colors total)
+        const CELL_SIZE = 32; // pixels per color cell
+        const GRID_SIZE = 16; // 16x16 grid for 256 colors
+        const canvas = createCanvas(CELL_SIZE * GRID_SIZE, CELL_SIZE * GRID_SIZE);
+        const ctx = canvas.getContext('2d');
+
+        // Draw each palette color as a rectangle
+        for (let i = 0; i < 256; i++) {
+            const x = (i % GRID_SIZE) * CELL_SIZE;
+            const y = Math.floor(i / GRID_SIZE) * CELL_SIZE;
+
+            let color: RGBColor;
+            if ('colors' in palette) {
+                // Handle 5-bit palette
+                const colorData = palette.colors[i];
+                color = {
+                    r: ((colorData & 0xF800) >> 11) * 255 / 31,
+                    g: ((colorData & 0x07E0) >> 5) * 255 / 63,
+                    b: (colorData & 0x001F) * 255 / 31,
+                    a: 255
+                };
+            } else {
+                // Handle RGB palette
+                const rgbColor = palette.rgbcolors[i];
+                color = {
+                    r: (rgbColor >> 16) & 0xFF,
+                    g: (rgbColor >> 8) & 0xFF,
+                    b: rgbColor & 0xFF,
+                    a: 255
+                };
+            }
+
+            ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`;
+            ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+
+            // Draw color index
+            ctx.fillStyle = this.getContrastingColor(color);
+            ctx.font = '10px Arial';
+            ctx.fillText(i.toString(), x + 2, y + 12);
+        }
+
+        // Save the canvas to a file
+        const buffer = canvas.toBuffer('image/png');
+        await fs.writeFile(outputPath, buffer);
+    }
+
+    private static getContrastingColor(color: RGBColor): string {
+        // Calculate relative luminance
+        const luminance = (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) / 255;
+        // Return white for dark colors, black for light colors
+        return luminance < 0.5 ? 'white' : 'black';
+    }
+
     private static validateBitmap(bitmap: BitmapDataType): boolean {
         return Boolean(
             bitmap &&

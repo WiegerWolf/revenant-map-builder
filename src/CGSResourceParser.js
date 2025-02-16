@@ -162,9 +162,16 @@ export class CGSResourceParser {
                 const outputPath = join(
                     '_OUTPUT',
                     relativePath,
-                    `bitmap_${i}.bmp`
+                    `bitmap_${i}.png`
+                );
+                const palletOutputPath = join(
+                    '_OUTPUT',
+                    relativePath,
+                    `palette_${i}.png`
                 );
 
+                await fs.mkdir(dirname(palletOutputPath), { recursive: true });
+                await BitmapRender.renderPaletteDebug(bitmap.palette, palletOutputPath);
                 await fs.mkdir(dirname(outputPath), { recursive: true });
                 await BitmapRender.renderBitmap(bitmap, outputPath);
 
