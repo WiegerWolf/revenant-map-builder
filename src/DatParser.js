@@ -593,9 +593,9 @@ export class DatParser {
         return classDef.types.find(t => t.id === uniqueId) || null;
     }
 
-    static fileCache = new Map(); // Cache for file paths
+    static pathLookupCache = new Map(); // Cache for file paths
 
-    static async buildFileCache(baseDir) {
+    static async buildPathLookupCache(baseDir) {
         const cache = new Map();
 
         async function scanDirectory(dir) {
@@ -622,12 +622,12 @@ export class DatParser {
         const normalizedSearch = searchPath.toLowerCase().replace(/\\/g, sep);
 
         // Initialize cache if needed
-        if (this.fileCache.size === 0) {
-            this.fileCache = await this.buildFileCache(baseDir);
+        if (this.pathLookupCache.size === 0) {
+            this.pathLookupCache = await this.buildPathLookupCache(baseDir);
         }
 
         // Look up the real path in the cache
-        const realPath = this.fileCache.get(normalizedSearch);
+        const realPath = this.pathLookupCache.get(normalizedSearch);
         if (realPath) {
             return realPath;
         }
