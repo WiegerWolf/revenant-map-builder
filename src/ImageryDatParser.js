@@ -4,7 +4,10 @@ import { ObjectFlags } from './ObjectFlags';
 import { DatParser } from './DatParser';
 import { AnimationFlags } from './AnimationFlags';
 import { ImageryType } from './ImageryType';
-import { readFileAsArrayBuffer } from './utils';
+import {
+    readFileAsArrayBuffer,
+    getNullTerminatedStringFromByteArray
+} from './utils';
 
 export class ImageryDatParser {
     static QUICKLOAD_FILE_ID = ('H'.charCodeAt(0)) |
@@ -55,11 +58,7 @@ export class ImageryDatParser {
             stream.skip(this.MAX_IMAGERY_FILENAME_LENGTH);
 
             // Convert to string until first null terminator
-            let filename = '';
-            for (let j = 0; j < filenameBytes.length; j++) {
-                if (filenameBytes[j] === 0) break;
-                filename += String.fromCharCode(filenameBytes[j]);
-            }
+            let filename = getNullTerminatedStringFromByteArray(filenameBytes);
 
             // Read header size
             const headerSize = stream.readUint32();
@@ -199,3 +198,4 @@ export class ImageryDatParser {
         return result;
     }
 }
+

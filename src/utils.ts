@@ -38,3 +38,13 @@ export async function readFileAsArrayBuffer(filePath: string): Promise<ArrayBuff
     );
     return arrayBuffer;
 }
+
+
+export function getNullTerminatedStringFromByteArray(byteArray: Uint8Array): string {
+    let resString = '';
+    for (let j = 0; j < byteArray.length; j++) {
+        if (byteArray[j] === 0) break;
+        resString += String.fromCharCode(byteArray[j]);
+    }
+    return resString;
+}
