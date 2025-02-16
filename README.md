@@ -26,12 +26,12 @@ This project provides tools to parse and extract data from various file formats 
 1. Clone the repository
 2. Install dependencies:
 ```bash
-npm install
+bun install
 ```
 
 ## Usage
 
-Your best bet right now is to dive into `main.js` and see how it's used.
+Your best bet right now is to dive into `index.js` and see how it's used.
 
 ## File Structure Support
 
@@ -78,7 +78,7 @@ The parser can:
 
 ## Requirements
 
-- Node.js 18.0 or higher
+- [Bun](https://bun.sh/)
 - Original game files in `_INSTALLED_GAME/Revenant` directory
 - Sufficient disk space for extracted data in `_OUTPUT` directory
 
