@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 
 export class BitmapRender {
-    static async saveToBMP(bitmap, outputPath) {
+    static async renderBitmap(bitmap, outputPath) {
         // First, let's validate the input
         if (!bitmap || !bitmap.width || !bitmap.height || !bitmap.data) {
             console.error('Invalid bitmap data');

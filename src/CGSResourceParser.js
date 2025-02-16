@@ -166,7 +166,7 @@ export class CGSResourceParser {
                 );
 
                 await fs.mkdir(dirname(outputPath), { recursive: true });
-                await BitmapRender.saveToBMP(bitmap, outputPath);
+                await BitmapRender.renderBitmap(bitmap, outputPath);
 
                 // Perform sanity checks and conversions
                 if (bitmap.width > 8192 || bitmap.height > 8192) {
