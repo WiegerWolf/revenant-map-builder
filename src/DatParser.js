@@ -10,6 +10,7 @@ import { S3DPoint } from './S3DPoint';
 import { SColor } from './SColor';
 import { SLightDef } from './SLightDef';
 import { ObjectFlags } from './ObjectFlags';
+import { readFileAsArrayBuffer } from './utils';
 
 
 export class DatParser {
@@ -56,12 +57,7 @@ export class DatParser {
     static async loadFile(filePath, gameDir) {
         this.gameDir = gameDir; // Store gameDir for resource loading
         try {
-            const buffer = await fs.readFile(filePath);
-            const arrayBuffer = buffer.buffer.slice(
-                buffer.byteOffset,
-                buffer.byteOffset + buffer.byteLength
-            );
-
+            const arrayBuffer = await readFileAsArrayBuffer(filePath);
             return DatParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading file:', error);
