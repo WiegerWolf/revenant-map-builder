@@ -6,6 +6,7 @@ import { BitmapRender } from './BitmapRender';
 import { ImageryType } from './ImageryType';
 import { InputStream } from './InputStream';
 import { ObjectFlags } from './ObjectFlags';
+import { readFileAsArrayBuffer } from './utils';
 
 export class CGSResourceParser {
     static RESMAGIC = 0x52534743; // 'CGSR' in little-endian
@@ -13,12 +14,8 @@ export class CGSResourceParser {
 
     static async loadFile(filePath) {
         try {
-            const buffer = await fs.readFile(filePath);
-            const arrayBuffer = buffer.buffer.slice(
-                buffer.byteOffset,
-                buffer.byteOffset + buffer.byteLength
-            );
             console.info(`Reading file: ${filePath}`);
+            const arrayBuffer = await readFileAsArrayBuffer(filePath);
             return await CGSResourceParser.parse(arrayBuffer, filePath);
         } catch (error) {
             console.error('Error loading CGS resource file:', error);
