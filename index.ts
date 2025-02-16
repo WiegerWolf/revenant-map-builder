@@ -9,10 +9,6 @@ async function main() {
     const resourcesDir = join(gameDir, 'Resources');
 
     try {
-        // Build the file cache
-        console.log('Building file cache...');
-        await DatParser.buildFileCache(resourcesDir);
-
         // Load IMAGERY.DAT first
         console.log('Loading IMAGERY.DAT...');
         const imageryDatPath = join(resourcesDir, 'imagery.dat');
