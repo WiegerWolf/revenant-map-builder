@@ -99,11 +99,7 @@ export class ImageryDatParser {
             const animNameBytes = new Uint8Array(arrayBuffer, stream.getPos(), this.MAXANIMNAME);
             stream.skip(this.MAXANIMNAME);
 
-            let animName = '';
-            for (let j = 0; j < animNameBytes.length; j++) {
-                if (animNameBytes[j] === 0) break;
-                animName += String.fromCharCode(animNameBytes[j]);
-            }
+            let animName = getNullTerminatedStringFromByteArray(animNameBytes);
 
             const state = {
                 animName, // Array of Ascii Names
