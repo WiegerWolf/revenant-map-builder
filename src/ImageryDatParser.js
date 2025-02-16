@@ -1,10 +1,10 @@
-import { promises as fs } from 'fs';
 import { extname } from "path";
 import { InputStream } from './InputStream';
 import { ObjectFlags } from './ObjectFlags';
 import { DatParser } from './DatParser';
 import { AnimationFlags } from './AnimationFlags';
 import { ImageryType } from './ImageryType';
+import { readFileAsArrayBuffer } from './utils';
 
 export class ImageryDatParser {
     static QUICKLOAD_FILE_ID = ('H'.charCodeAt(0)) |
@@ -19,11 +19,7 @@ export class ImageryDatParser {
     static async loadFile(filePath, gameDir) {
         try {
             this.gameDir = gameDir;
-            const buffer = await fs.readFile(filePath);
-            const arrayBuffer = buffer.buffer.slice(
-                buffer.byteOffset,
-                buffer.byteOffset + buffer.byteLength
-            );
+            const arrayBuffer = await readFileAsArrayBuffer(filePath);
             return await ImageryDatParser.parse(arrayBuffer);
         } catch (error) {
             console.error('Error loading IMAGERY.DAT file:', error);
