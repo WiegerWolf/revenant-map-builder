@@ -1,7 +1,8 @@
 import { promises as fs } from 'fs';
+import type { BitmapDataType } from './types';
 
 export class BitmapRender {
-    static async renderBitmap(bitmap, outputPath) {
+    static async renderBitmap(bitmap: BitmapDataType, outputPath: string): Promise<void> {
         // First, let's validate the input
         if (!bitmap || !bitmap.width || !bitmap.height || !bitmap.data) {
             console.error('Invalid bitmap data');
@@ -47,10 +48,10 @@ export class BitmapRender {
                 let r = 0, g = 0, b = 0;
 
                 try {
-                    if (bitmap.flags.bm_8bit && bitmap.palette) {
+                    if (bitmap.flags.bm_8bit && bitmap.palette && typeof bitmap.palette === 'object') {
                         const index = y * bitmap.width + x;
                         if (index < bitmap.data.length) {
-                            const paletteIndex = bitmap.data[index];
+                            const paletteIndex = (bitmap.data as Uint8Array)[index];
                             if (paletteIndex < 256) {
                                 if (bitmap.flags.bm_5bitpal) {
                                     // Use the 16-bit color value from colors array for 5-bit palette
@@ -60,7 +61,6 @@ export class BitmapRender {
                                     const red = (colorData & 0xF800) >> 11; // Extract top 5 bits
                                     const green = (colorData & 0x07E0) >> 5; // Extract middle 6 bits
                                     const blue = (colorData & 0x001F); // Extract bottom 5 bits
-
 
                                     // Convert to 8-bit color values
                                     r = (red * 255) / 31; // Scale 5-bit to 8-bit
@@ -79,7 +79,7 @@ export class BitmapRender {
                     else if (bitmap.flags.bm_15bit) {
                         const index = y * bitmap.width + x;
                         if (index < bitmap.data.length) {
-                            const pixel = bitmap.data[index];
+                            const pixel = (bitmap.data as Uint16Array)[index];
                             r = ((pixel & 0x7C00) >> 10) << 3;
                             g = ((pixel & 0x03E0) >> 5) << 3;
                             b = (pixel & 0x001F) << 3;
@@ -88,7 +88,7 @@ export class BitmapRender {
                     else if (bitmap.flags.bm_16bit) {
                         const index = y * bitmap.width + x;
                         if (index < bitmap.data.length) {
-                            const pixel = bitmap.data[index];
+                            const pixel = (bitmap.data as Uint16Array)[index];
                             r = ((pixel & 0xF800) >> 11) << 3;
                             g = ((pixel & 0x07E0) >> 5) << 2;
                             b = (pixel & 0x001F) << 3;
@@ -97,15 +97,15 @@ export class BitmapRender {
                     else if (bitmap.flags.bm_24bit) {
                         const pixelOffset = (y * bitmap.width + x) * 3;
                         if (pixelOffset + 2 < bitmap.data.length) {
-                            b = bitmap.data[pixelOffset];
-                            g = bitmap.data[pixelOffset + 1];
-                            r = bitmap.data[pixelOffset + 2];
+                            b = (bitmap.data as Uint8Array)[pixelOffset];
+                            g = (bitmap.data as Uint8Array)[pixelOffset + 1];
+                            r = (bitmap.data as Uint8Array)[pixelOffset + 2];
                         }
                     }
                     else if (bitmap.flags.bm_32bit) {
                         const index = y * bitmap.width + x;
                         if (index < bitmap.data.length) {
-                            const pixel = bitmap.data[index];
+                            const pixel = (bitmap.data as Uint32Array)[index];
                             r = (pixel >> 16) & 0xFF;
                             g = (pixel >> 8) & 0xFF;
                             b = pixel & 0xFF;
