@@ -1,43 +1,59 @@
-class ObjectFlags {
-    constructor(value) {
-        // Convert number to 32-bit binary string
-        const bits = (value >>> 0).toString(2).padStart(32, '0');
+export class ObjectFlags {
+    static OF_NOCHANGE = 0x00000001;
+    static OF_MULTISTATE = 0x00000002;
+    static OF_ANIMATE = 0x00000004;
+    static OF_NONMAP = 0x00000008;
+    static OF_IMMOBILE = 0x00000010;
+    static OF_DYNAMIC = 0x00000020;
+    static OF_LIGHT = 0x00000040;
+    static OF_ETHEREAL = 0x00000080;
+    static OF_SHADOW = 0x00000100;
+    static OF_LOCKED = 0x00000200;
+    static OF_WALKABLE = 0x00000400;
+    static OF_BOXWALK = 0x00000800;
+    static OF_BOXVIEW = 0x00001000;
+    static OF_CONTOUR = 0x00002000;
+    static OF_NOWALK = 0x00004000;
+    static OF_NOVIEW = 0x00008000;
+    static OF_INVALID = 0x00010000;
 
-        this.of_immobile = !!parseInt(bits[31 - 0]);      // Not affected by gravity etc
-        this.of_editorlock = !!parseInt(bits[31 - 1]);    // Object is locked down (can't move in editor)
-        this.of_light = !!parseInt(bits[31 - 2]);         // Object generates light (a light is on for object)
-        this.of_moving = !!parseInt(bits[31 - 3]);        // Object is a moving object (characters, exits, players, missiles, etc.)
-        this.of_animating = !!parseInt(bits[31 - 4]);     // Has animating imagery (animator pointer is set)
-        this.of_ai = !!parseInt(bits[31 - 5]);            // Object has A.I.
-        this.of_disabled = !!parseInt(bits[31 - 6]);      // Object A.I. is disabled
-        this.of_invisible = !!parseInt(bits[31 - 7]);     // Not visible in map pane during normal play
-        this.of_editor = !!parseInt(bits[31 - 8]);        // Is editor only object
-        this.of_drawflip = !!parseInt(bits[31 - 9]);      // Reverse on the horizontal
-        this.of_seldraw = !!parseInt(bits[31 - 10]);      // Editor is manipulating object
-        this.of_reveal = !!parseInt(bits[31 - 11]);       // Player needs to see behind object (shutter draw)
-        this.of_kill = !!parseInt(bits[31 - 12]);         // Suicidal (tells system to kill object next frame)
-        this.of_generated = !!parseInt(bits[31 - 13]);    // Created by map generator
-        this.of_animate = !!parseInt(bits[31 - 14]);      // Call the objects Animate() func AND create object animators
-        this.of_pulse = !!parseInt(bits[31 - 15]);        // Call the object Pulse() function
-        this.of_weightless = !!parseInt(bits[31 - 16]);   // Object can move, but is not affected by gravity
-        this.of_complex = !!parseInt(bits[31 - 17]);      // Object is a complex object
-        this.of_notify = !!parseInt(bits[31 - 18]);       // Notify object of a system change
-        this.of_nonmap = !!parseInt(bits[31 - 19]);       // Not created, deleted, saved, or loaded by map
-        this.of_onexit = !!parseInt(bits[31 - 20]);       // Object is currently on an exit (used to prevent exit loops)
-        this.of_pause = !!parseInt(bits[31 - 21]);        // Script is paused
-        this.of_nowalk = !!parseInt(bits[31 - 22]);       // Don't use walk map for this tile
-        this.of_paralize = !!parseInt(bits[31 - 23]);     // Freeze the object in mid-animation
-        this.of_nocollision = !!parseInt(bits[31 - 24]);  // Let the object go through boundries
-        this.of_iced = !!parseInt(bits[31 - 25]);         // Used to know when to end the iced effect
+    constructor(flags) {
+        this.flags = flags;
     }
-    // NOTE: OF_NONMAP
-    // ----------------
-    //
-    // OF_NONMAP tells the map system that this object is managed outside of the regular map
-    // system.  This object will not be LOADED, SAVED, CREATED, or DELETED by the map or
-    // sector system.  Any object with this flag can be inserted into the map and assume that
-    // it won't be deleted by the map system. This flag is intended for players, but can be used for
-    // other objects. 
-}
 
-export default ObjectFlags;
+    get of_nochange() { return !!(this.flags & ObjectFlags.OF_NOCHANGE); }
+    get of_multistate() { return !!(this.flags & ObjectFlags.OF_MULTISTATE); }
+    get of_animate() { return !!(this.flags & ObjectFlags.OF_ANIMATE); }
+    get of_nonmap() { return !!(this.flags & ObjectFlags.OF_NONMAP); }
+    get of_immobile() { return !!(this.flags & ObjectFlags.OF_IMMOBILE); }
+    get of_dynamic() { return !!(this.flags & ObjectFlags.OF_DYNAMIC); }
+    get of_light() { return !!(this.flags & ObjectFlags.OF_LIGHT); }
+    get of_ethereal() { return !!(this.flags & ObjectFlags.OF_ETHEREAL); }
+    get of_shadow() { return !!(this.flags & ObjectFlags.OF_SHADOW); }
+    get of_locked() { return !!(this.flags & ObjectFlags.OF_LOCKED); }
+    get of_walkable() { return !!(this.flags & ObjectFlags.OF_WALKABLE); }
+    get of_boxwalk() { return !!(this.flags & ObjectFlags.OF_BOXWALK); }
+    get of_boxview() { return !!(this.flags & ObjectFlags.OF_BOXVIEW); }
+    get of_contour() { return !!(this.flags & ObjectFlags.OF_CONTOUR); }
+    get of_nowalk() { return !!(this.flags & ObjectFlags.OF_NOWALK); }
+    get of_noview() { return !!(this.flags & ObjectFlags.OF_NOVIEW); }
+    get of_invalid() { return !!(this.flags & ObjectFlags.OF_INVALID); }
+
+    isValid() {
+        // Check for mutually exclusive flags
+        const hasWalkFlags = this.of_walkable || this.of_boxwalk || this.of_nowalk;
+        const hasViewFlags = this.of_boxview || this.of_noview;
+        
+        // Only one walk flag should be set
+        const validWalk = !hasWalkFlags || 
+            ((this.flags & (ObjectFlags.OF_WALKABLE | ObjectFlags.OF_BOXWALK | ObjectFlags.OF_NOWALK)) & 
+            (this.flags & (ObjectFlags.OF_WALKABLE | ObjectFlags.OF_BOXWALK | ObjectFlags.OF_NOWALK) - 1)) === 0;
+
+        // Only one view flag should be set
+        const validView = !hasViewFlags || 
+            ((this.flags & (ObjectFlags.OF_BOXVIEW | ObjectFlags.OF_NOVIEW)) & 
+            (this.flags & (ObjectFlags.OF_BOXVIEW | ObjectFlags.OF_NOVIEW) - 1)) === 0;
+
+        return validWalk && validView && !this.of_invalid;
+    }
+}
