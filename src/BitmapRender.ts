@@ -29,6 +29,35 @@ export class BitmapRender {
         await fs.writeFile(outputPath, buffer);
     }
 
+    private static getPaletteColor(palette: Palette, index: number, use5BitPal: boolean = false): RGBColor {
+        if (index >= 256) {
+            return { r: 0, g: 0, b: 0, a: 255 };
+        }
+
+        if (use5BitPal && 'colors' in palette) {
+            // Handle 5-bit palette
+            const colorData = palette.colors[index];
+            return {
+                r: ((colorData & 0xF800) >> 11) * 255 / 31,
+                g: ((colorData & 0x07E0) >> 5) * 255 / 63,
+                b: (colorData & 0x001F) * 255 / 31,
+                a: 255
+            };
+        } else if ('rgbcolors' in palette) {
+            // Handle RGB palette
+            const rgbColor = palette.rgbcolors[index];
+            return {
+                r: (rgbColor >> 16) & 0xFF,
+                g: (rgbColor >> 8) & 0xFF,
+                b: rgbColor & 0xFF,
+                a: 255
+            };
+        }
+        
+        // Default case if neither palette type is available
+        return { r: 0, g: 0, b: 0, a: 255 };
+    }
+
     static async renderPaletteDebug(palette: Palette, outputPath: string): Promise<void> {
         // Create a canvas with 16x16 grid of colors (256 colors total)
         const CELL_SIZE = 32; // pixels per color cell
@@ -41,27 +70,7 @@ export class BitmapRender {
             const x = (i % GRID_SIZE) * CELL_SIZE;
             const y = Math.floor(i / GRID_SIZE) * CELL_SIZE;
 
-            let color: RGBColor;
-            if ('colors' in palette) {
-                // Handle 5-bit palette
-                const colorData = palette.colors[i];
-                color = {
-                    r: ((colorData & 0xF800) >> 11) * 255 / 31,
-                    g: ((colorData & 0x07E0) >> 5) * 255 / 63,
-                    b: (colorData & 0x001F) * 255 / 31,
-                    a: 255
-                };
-            } else {
-                // Handle RGB palette
-                const rgbColor = palette.rgbcolors[i];
-                color = {
-                    r: (rgbColor >> 16) & 0xFF,
-                    g: (rgbColor >> 8) & 0xFF,
-                    b: rgbColor & 0xFF,
-                    a: 255
-                };
-            }
-
+            const color = this.getPaletteColor(palette, i);
             ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`;
             ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
 
@@ -144,27 +153,7 @@ export class BitmapRender {
         }
 
         const paletteIndex = data[index];
-        if (paletteIndex >= 256) {
-            return { r: 0, g: 0, b: 0, a: this.DEFAULT_ALPHA };
-        }
-
-        if (flags.bm_5bitpal) {
-            const colorData = palette.colors[paletteIndex];
-            return {
-                r: ((colorData & 0xF800) >> 11) * 255 / 31,
-                g: ((colorData & 0x07E0) >> 5) * 255 / 63,
-                b: (colorData & 0x001F) * 255 / 31,
-                a: this.DEFAULT_ALPHA
-            };
-        } else {
-            const rgbColor = palette.rgbcolors[paletteIndex];
-            return {
-                r: (rgbColor >> 16) & 0xFF,
-                g: (rgbColor >> 8) & 0xFF,
-                b: rgbColor & 0xFF,
-                a: this.DEFAULT_ALPHA
-            };
-        }
+        return this.getPaletteColor(palette, paletteIndex, flags.bm_5bitpal);
     }
 
     private static process15BitColor(data: Uint16Array, index: number): RGBColor {
