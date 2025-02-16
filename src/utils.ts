@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import type {InputStream} from "./InputStream";
 
 // CRC32 calculation (needed for PNG format)
 interface CRCTable extends Int32Array {
@@ -47,4 +48,20 @@ export function getNullTerminatedStringFromByteArray(byteArray: Uint8Array): str
         resString += String.fromCharCode(byteArray[j]);
     }
     return resString;
+}
+
+/**
+ * Reads a null-terminated string from the input stream.
+ * Note: This advances the stream position by the specified length.
+ * 
+ * @param stream - The InputStream to read from 
+ * @param len - The maximum length of the string to read
+ * @returns {string} The null-terminated string
+ */
+export function readNullTerminatedStringFromStream(stream: InputStream, len: number): string {
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = stream.readUint8();
+    }
+    return getNullTerminatedStringFromByteArray(bytes);
 }

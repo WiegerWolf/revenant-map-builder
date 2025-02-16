@@ -6,7 +6,7 @@ import { BitmapRender } from './BitmapRender';
 import { ImageryType } from './ImageryType';
 import { InputStream } from './InputStream';
 import { ObjectFlags } from './ObjectFlags';
-import { readFileAsArrayBuffer } from './utils';
+import { readFileAsArrayBuffer, readNullTerminatedStringFromStream } from './utils';
 
 export class CGSResourceParser {
     static RESMAGIC = 0x52534743; // 'CGSR' in little-endian
@@ -62,18 +62,9 @@ export class CGSResourceParser {
         const imageryMetaData = [];
         for (let i = 0; i < header.numStates; i++) {
 
-            // TODO: replace this with getNullTerminatedStringFromByteArray fn call
             const metaData = {
-                ascii: new Uint8Array(32) // Initialize ASCII array
+                ascii: readNullTerminatedStringFromStream(stream, 32), // char ascii[32]
             };
-            // Read ASCII characters first
-            for (let j = 0; j < 32; j++) {
-                metaData.ascii[j] = stream.readUint8();
-            }
-            // Convert ASCII array to string
-            metaData.ascii = String.fromCharCode(...metaData.ascii)
-                .replace(/\0/g, ''); // Remove null characters
-
 
             // Then read the rest of the fields
             metaData.walkmap = stream.readUint32(); // Walkmap
@@ -115,17 +106,17 @@ export class CGSResourceParser {
         const totalWalkmapSize = imageryMetaData.reduce((sum, metaData) => sum + metaData.wwidth * metaData.wlength, 0);
         const padding = (4 - (totalWalkmapSize % 4)) % 4;
         if (padding > 0) {
+            console.warn(`Padding walkmap data by ${padding} bytes`);
             stream.skip(padding);
+            debugger;
         }
 
         // Skip unknown data
         const unknownDataSize = header.hdrsize - 12 - (72 * header.numStates);
         if (unknownDataSize > 0) {
-            // stream.skip(unknownDataSize);
-            console.warn(`Attempt to skip ${unknownDataSize} bytes of unknown data prevented`);
-            if (unknownDataSize > 4) {
-                // debugger;
-            }
+            console.warn(`Attempt to skip ${unknownDataSize} bytes of unknown data`);
+            stream.skip(unknownDataSize);
+            debugger;
         }
 
         // Read bitmap offsets
