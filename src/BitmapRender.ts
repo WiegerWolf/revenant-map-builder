@@ -38,18 +38,18 @@ export class BitmapRender {
             // Handle 5-bit palette
             const colorData = palette.colors[index];
             return {
-                r: ((colorData & 0xF800) >> 11) * 255 / 31,
+                b: ((colorData & 0xF800) >> 11) * 255 / 31,  // Swapped r to b
                 g: ((colorData & 0x07E0) >> 5) * 255 / 63,
-                b: (colorData & 0x001F) * 255 / 31,
+                r: (colorData & 0x001F) * 255 / 31,          // Swapped b to r
                 a: 255
             };
         } else if ('rgbcolors' in palette) {
             // Handle RGB palette
             const rgbColor = palette.rgbcolors[index];
             return {
-                r: (rgbColor >> 16) & 0xFF,
+                b: (rgbColor >> 16) & 0xFF,  // Swapped r to b
                 g: (rgbColor >> 8) & 0xFF,
-                b: rgbColor & 0xFF,
+                r: rgbColor & 0xFF,          // Swapped b to r
                 a: 255
             };
         }
@@ -163,9 +163,9 @@ export class BitmapRender {
 
         const pixel = data[index];
         return {
-            r: ((pixel & 0x7C00) >> 10) << 3,
+            b: ((pixel & 0x7C00) >> 10) << 3,  // Swapped r to b
             g: ((pixel & 0x03E0) >> 5) << 3,
-            b: (pixel & 0x001F) << 3,
+            r: (pixel & 0x001F) << 3,          // Swapped b to r
             a: this.DEFAULT_ALPHA
         };
     }
@@ -177,9 +177,9 @@ export class BitmapRender {
 
         const pixel = data[index];
         return {
-            r: ((pixel & 0xF800) >> 11) << 3,
+            b: ((pixel & 0xF800) >> 11) << 3,  // Swapped r to b
             g: ((pixel & 0x07E0) >> 5) << 2,
-            b: (pixel & 0x001F) << 3,
+            r: (pixel & 0x001F) << 3,          // Swapped b to r
             a: this.DEFAULT_ALPHA
         };
     }
@@ -191,9 +191,9 @@ export class BitmapRender {
         }
 
         return {
-            b: data[pixelOffset],
+            r: data[pixelOffset],     // Was b
             g: data[pixelOffset + 1],
-            r: data[pixelOffset + 2],
+            b: data[pixelOffset + 2], // Was r
             a: this.DEFAULT_ALPHA
         };
     }
@@ -205,9 +205,9 @@ export class BitmapRender {
 
         const pixel = data[index];
         return {
-            r: (pixel >> 16) & 0xFF,
+            b: (pixel >> 16) & 0xFF,  // Swapped r to b
             g: (pixel >> 8) & 0xFF,
-            b: pixel & 0xFF,
+            r: pixel & 0xFF,          // Swapped b to r
             a: this.DEFAULT_ALPHA
         };
     }
