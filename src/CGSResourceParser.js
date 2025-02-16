@@ -61,10 +61,11 @@ export class CGSResourceParser {
         // Read imagery_header_meta for each state
         const imageryMetaData = [];
         for (let i = 0; i < header.numStates; i++) {
+
+            // TODO: replace this with getNullTerminatedStringFromByteArray fn call
             const metaData = {
                 ascii: new Uint8Array(32) // Initialize ASCII array
             };
-
             // Read ASCII characters first
             for (let j = 0; j < 32; j++) {
                 metaData.ascii[j] = stream.readUint8();
