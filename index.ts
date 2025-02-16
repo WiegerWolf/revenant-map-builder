@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { join } from "path";
-import { ImageryDatParser } from './ImageryDatParser';
-import { DatParser } from './DatParser';
+import { ImageryDatParser } from './src/ImageryDatParser';
+import { DatParser } from './src/DatParser';
 
 async function main() {
     const gameDir = join('_INSTALLED_GAME', 'Revenant');
