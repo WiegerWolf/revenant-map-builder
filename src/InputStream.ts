@@ -160,16 +160,25 @@ export class InputStream implements IInputStream {
     /**
      * Prints a hexadecimal dump of the buffer contents for debugging purposes
      * @param start - Starting offset (optional, defaults to 0)
-     * @param length - Number of bytes to dump (optional, defaults to 256)
+     * @param length - Number of bytes to dump (optional, defaults to 256 or enough to show current position + 256)
      * @param bytesPerLine - Number of bytes to show per line (optional, defaults to 16)
      */
     dump(start: number = 0, length: number = 256, bytesPerLine: number = 16): void {
         const startPos = start;
-        const endPos = Math.min(startPos + length, this.dataView.byteLength);
+        // If current position is beyond the default view, extend the length to show enough context
+        const adjustedLength = this.offset > (startPos + length) ? 
+            (this.offset - startPos + 256) : length;
+        const endPos = Math.min(startPos + adjustedLength, this.dataView.byteLength);
         const bytes = new Uint8Array(this.dataView.buffer, this.dataView.byteOffset + startPos, endPos - startPos);
 
         // Show current position indicator if printing from start of buffer
         const showPositionIndicator = start === 0 && this.offset < endPos;
+
+        // Print notification if we adjusted the length
+        if (adjustedLength > length) {
+            console.log('\x1b[33mNote: Showing extended view because current position is at 0x' + 
+                this.offset.toString(16).padStart(8, '0') + '\x1b[0m');
+        }
 
         // Print header with adjusted spacing
         console.log('\x1b[36m' + '          00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F    ASCII             UINT32LE' + '\x1b[0m');
