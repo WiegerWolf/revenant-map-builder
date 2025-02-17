@@ -62,6 +62,13 @@ export class BitmapData {
             throw new Error('Corrupted bitmap dimensions');
         }
 
+        // if datasize is bigger than width * height, it's likely a corrupt bitmap
+        // we want to set the width to datasize/height to get a valid bitmap
+        if (bitmap.datasize > bitmap.width * bitmap.height) {
+            console.warn('Corrupted bitmap detected, adjusting width');
+            bitmap.width = bitmap.datasize / bitmap.height;
+        }
+        
         if (!bitmap.flags.isValid()) {
             throw new Error('Invalid bitmap flags configuration');
         }
