@@ -112,13 +112,15 @@ export class CGSResourceParser {
         }
 
         // Skip unknown data
-        const unknownDataSize = header.hdrsize - 12 - (72 * header.numStates);
-        if (unknownDataSize > 0) {
-            console.warn(`Attempt to skip ${unknownDataSize} bytes of unknown data`);
-            stream.skip(unknownDataSize);
-            debugger;
-        }
+        // const unknownDataSize = header.hdrsize - 12 - (72 * header.numStates);
+        // if (unknownDataSize > 0) {
+        //     console.warn(`Attempt to skip ${unknownDataSize} bytes of unknown data`);
+        //     stream.skip(unknownDataSize);
+        //     debugger;
+        // }
 
+        // Skip to the start of the bitmaps offsets section
+        stream.setPos(0x14+header.hdrsize);
         // Read bitmap offsets
         const bitmapOffsets = [];
         for (let i = 0; i < header.topbm; i++) {
