@@ -7,6 +7,18 @@ import { InputStream } from './InputStream';
 import type { BitmapDataType } from './types';
 
 export class BitmapData {
+    private static readSizeOffsetPair(stream: InputStream, bitmap: BitmapDataType, propName: 'alias' | 'alpha' | 'zbuffer' | 'normal' | 'palette') {
+        const sizeKey = `${propName}size` as const;
+        bitmap[sizeKey] = stream.readUint32();
+        const offsetPos = stream.getPos();
+        const value = stream.readUint32();
+        if (value !== 0) {
+            bitmap[propName] = value + offsetPos;
+        } else {
+            bitmap[propName] = value;
+        }
+    }
+
     static readBitmap(stream: InputStream, arrayBuffer: ArrayBuffer): BitmapDataType {
         // Read the fixed-size header structure
         const bitmap: BitmapDataType = {
@@ -31,43 +43,12 @@ export class BitmapData {
             data: null
         };
 
-        // Read sizes and offsets, adjusting the offsets based on their position
-        bitmap.aliassize = stream.readUint32();
-        const aliasOffsetPos = stream.getPos();
-        bitmap.alias = stream.readUint32();
-        if (bitmap.alias !== 0) {
-            bitmap.alias += aliasOffsetPos;
-        }
-
-        bitmap.alphasize = stream.readUint32();
-        const alphaOffsetPos = stream.getPos();
-        bitmap.alpha = stream.readUint32();
-        if (bitmap.alpha !== 0) {
-            bitmap.alpha += alphaOffsetPos;
-        }
-
-        bitmap.zbuffersize = stream.readUint32();
-        const zbufferOffsetPos = stream.getPos();
-        bitmap.zbuffer = stream.readUint32();
-        if (bitmap.zbuffer !== 0) {
-            bitmap.zbuffer += zbufferOffsetPos;
-        }
-
-        bitmap.normalsize = stream.readUint32();
-        const normalOffsetPos = stream.getPos();
-        bitmap.normal = stream.readUint32();
-        if (bitmap.normal !== 0) {
-            bitmap.normal += normalOffsetPos;
-        }
-
-        bitmap.palettesize = stream.readUint32();
-        const paletteOffsetPos = stream.getPos();
-        bitmap.palette = stream.readUint32();
-
-        // Fix: Adjust palette offset relative to stream position
-        if (bitmap.palette !== 0) {
-            bitmap.palette += paletteOffsetPos;
-        }
+        // Read all size/offset pairs
+        BitmapData.readSizeOffsetPair(stream, bitmap, 'alias');
+        BitmapData.readSizeOffsetPair(stream, bitmap, 'alpha');
+        BitmapData.readSizeOffsetPair(stream, bitmap, 'zbuffer');
+        BitmapData.readSizeOffsetPair(stream, bitmap, 'normal');
+        BitmapData.readSizeOffsetPair(stream, bitmap, 'palette');
 
         bitmap.datasize = stream.readUint32();
 
