@@ -128,6 +128,8 @@ export class BitmapData {
                             blockSize
                         );
                         const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockStream, blockWidth, blockHeight);
+                        // create a stream from the decompressed data
+                        const decompressedStream = new InputStream(decompressed.buffer);
 
                         // Copy the decompressed chunk to the right position
                         if (bitmap.flags.bm_8bit && bitmap.data instanceof Uint8Array) {
