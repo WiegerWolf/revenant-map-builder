@@ -172,44 +172,53 @@ export class InputStream implements IInputStream {
         const showPositionIndicator = start === 0 && this.offset < endPos;
 
         for (let i = 0; i < bytes.length; i += bytesPerLine) {
-            // Print offset
+            // Print offset with cyan color
             const offset = (startPos + i).toString(16).padStart(8, '0');
-            let hexLine = `${offset}: `;
+            let hexLine = `\x1b[36m${offset}\x1b[0m: `;
             let asciiLine = '  ';
-            let positionLine = showPositionIndicator ? '        ' : ''; // Align with hex values
 
             // Print hex values
             for (let j = 0; j < bytesPerLine; j++) {
                 if (i + j < bytes.length) {
                     const byte = bytes[i + j];
-                    hexLine += byte.toString(16).padStart(2, '0') + ' ';
-                    asciiLine += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
+                    const isCurrentPos = showPositionIndicator && (startPos + i + j === this.offset);
+                    const hexValue = byte.toString(16).padStart(2, '0');
                     
-                    // Add position indicator
-                    if (showPositionIndicator) {
-                        positionLine += (startPos + i + j === this.offset) ? '^  ' : '   ';
+                    let colorCode = '';
+                    // Color coding based on byte ranges
+                    if (byte === 0) {
+                        colorCode = '\x1b[90m'; // Gray for null bytes
+                    } else if (byte < 32) {
+                        colorCode = '\x1b[31m'; // Red for control characters
+                    } else if (byte >= 32 && byte <= 126) {
+                        colorCode = '\x1b[32m'; // Green for printable ASCII
+                    } else if (byte === 127) {
+                        colorCode = '\x1b[31m'; // Red for DEL
+                    } else {
+                        colorCode = '\x1b[33m'; // Yellow for extended ASCII
+                    }
+
+                    if (isCurrentPos) {
+                        // Current position: inverse colors + bold
+                        hexLine += `\x1b[1m\x1b[7m${colorCode}${hexValue}\x1b[0m `;
+                        asciiLine += `\x1b[1m\x1b[7m${byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.'}\x1b[0m`;
+                    } else {
+                        // Normal display with color
+                        hexLine += `${colorCode}${hexValue}\x1b[0m `;
+                        asciiLine += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
                     }
                 } else {
                     hexLine += '   ';
                     asciiLine += ' ';
-                    if (showPositionIndicator) {
-                        positionLine += '   ';
-                    }
                 }
                 
                 // Add extra space after 8 bytes for readability
                 if (j === 7) {
                     hexLine += ' ';
-                    if (showPositionIndicator) {
-                        positionLine += ' ';
-                    }
                 }
             }
 
             console.log(hexLine + asciiLine);
-            if (showPositionIndicator && (startPos + i <= this.offset && this.offset < startPos + i + bytesPerLine)) {
-                console.log(positionLine);
-            }
         }
     }
 }
