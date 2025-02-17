@@ -63,6 +63,8 @@ export class BitmapData {
         bitmap.palettesize = stream.readUint32();
         const paletteOffsetPos = stream.getPos();
         bitmap.palette = stream.readUint32();
+
+        // Fix: Adjust palette offset relative to stream position
         if (bitmap.palette !== 0) {
             bitmap.palette += paletteOffsetPos;
         }
