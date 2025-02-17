@@ -11,8 +11,8 @@ async function main() {
         await DatParser.loadClassDefinitions(gameDir);
 
         // Load specific resource file
-        console.log('Loading icenband.i2d...');
-        const resourcePath = 'Equip/icenband.i2d';
+        const resourcePath = 'Cave/cavbones1.i2d';
+        console.log(`Loading resource file: ${resourcePath}`);
         const resource = await DatParser.loadResourceFile(gameDir, resourcePath);
         
         if (resource) {
