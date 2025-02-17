@@ -156,6 +156,45 @@ export class InputStream implements IInputStream {
     eof(): boolean {
         return this.offset >= this.dataView.byteLength;
     }
+
+    /**
+     * Prints a hexadecimal dump of the buffer contents for debugging purposes
+     * @param start - Starting offset (optional, defaults to current position)
+     * @param length - Number of bytes to dump (optional, defaults to 256)
+     * @param bytesPerLine - Number of bytes to show per line (optional, defaults to 16)
+     */
+    debug(start?: number, length: number = 256, bytesPerLine: number = 16): void {
+        const startPos = start ?? this.offset;
+        const endPos = Math.min(startPos + length, this.dataView.byteLength);
+        const bytes = new Uint8Array(this.dataView.buffer, this.dataView.byteOffset + startPos, endPos - startPos);
+
+        for (let i = 0; i < bytes.length; i += bytesPerLine) {
+            // Print offset
+            const offset = (startPos + i).toString(16).padStart(8, '0');
+            let hexLine = `${offset}: `;
+            let asciiLine = '  ';
+
+            // Print hex values
+            for (let j = 0; j < bytesPerLine; j++) {
+                if (i + j < bytes.length) {
+                    const byte = bytes[i + j];
+                    hexLine += byte.toString(16).padStart(2, '0') + ' ';
+                    // Print ASCII representation (if printable)
+                    asciiLine += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
+                } else {
+                    hexLine += '   ';
+                    asciiLine += ' ';
+                }
+                
+                // Add extra space after 8 bytes for readability
+                if (j === 7) {
+                    hexLine += ' ';
+                }
+            }
+
+            console.log(hexLine + asciiLine);
+        }
+    }
 }
 
 /**
