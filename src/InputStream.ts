@@ -171,11 +171,16 @@ export class InputStream implements IInputStream {
         // Show current position indicator if printing from start of buffer
         const showPositionIndicator = start === 0 && this.offset < endPos;
 
+        // Print header with adjusted spacing
+        console.log('\x1b[36m' + '          00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F    ASCII             UINT32LE' + '\x1b[0m');
+        console.log('\x1b[36m' + '          -----------------------------------------------    ----------------  ----------------------------------------------' + '\x1b[0m');
+
         for (let i = 0; i < bytes.length; i += bytesPerLine) {
             // Print offset with cyan color
             const offset = (startPos + i).toString(16).padStart(8, '0');
             let hexLine = `\x1b[36m${offset}\x1b[0m: `;
             let asciiLine = '  ';
+            let uint32Line = '  ';
 
             // Print hex values
             for (let j = 0; j < bytesPerLine; j++) {
@@ -207,6 +212,16 @@ export class InputStream implements IInputStream {
                         hexLine += `${colorCode}${hexValue}\x1b[0m `;
                         asciiLine += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
                     }
+
+                    // Add uint32 values every 4 bytes
+                    if (j % 4 === 3) {
+                        if (i + j >= 3 && i + j < bytes.length) {
+                            const uint32Value = new DataView(bytes.buffer, bytes.byteOffset + i + j - 3, 4).getUint32(0, true);
+                            // Only show decimal value in magenta
+                            uint32Line += `\x1b[35m${uint32Value.toString().padStart(10)}\x1b[0m`;
+                            if (j < bytesPerLine - 4) uint32Line += '  ';
+                        }
+                    }
                 } else {
                     hexLine += '   ';
                     asciiLine += ' ';
@@ -218,7 +233,7 @@ export class InputStream implements IInputStream {
                 }
             }
 
-            console.log(hexLine + asciiLine);
+            console.log(hexLine + asciiLine + uint32Line);
         }
     }
 }
