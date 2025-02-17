@@ -7,6 +7,11 @@ import { InputStream } from './InputStream';
 import type { BitmapDataType } from './types';
 
 export class BitmapData {
+    /**
+     * Read a size/offset pair from the stream and store it in the bitmap object.
+     * It's important to note that the offset value is relative to the position of the offset field itself
+     * (i.e. the position of the stream once the offset field was read). And NOT the start of the bitmap data.
+     */
     private static readSizeOffsetPair(stream: InputStream, bitmap: BitmapDataType, propName: 'alias' | 'alpha' | 'zbuffer' | 'normal' | 'palette') {
         const sizeKey = `${propName}size` as const;
         bitmap[sizeKey] = stream.readUint32();
