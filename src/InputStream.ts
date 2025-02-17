@@ -159,40 +159,57 @@ export class InputStream implements IInputStream {
 
     /**
      * Prints a hexadecimal dump of the buffer contents for debugging purposes
-     * @param start - Starting offset (optional, defaults to current position)
+     * @param start - Starting offset (optional, defaults to 0)
      * @param length - Number of bytes to dump (optional, defaults to 256)
      * @param bytesPerLine - Number of bytes to show per line (optional, defaults to 16)
      */
-    debug(start?: number, length: number = 256, bytesPerLine: number = 16): void {
-        const startPos = start ?? this.offset;
+    dump(start: number = 0, length: number = 256, bytesPerLine: number = 16): void {
+        const startPos = start;
         const endPos = Math.min(startPos + length, this.dataView.byteLength);
         const bytes = new Uint8Array(this.dataView.buffer, this.dataView.byteOffset + startPos, endPos - startPos);
+
+        // Show current position indicator if printing from start of buffer
+        const showPositionIndicator = start === 0 && this.offset < endPos;
 
         for (let i = 0; i < bytes.length; i += bytesPerLine) {
             // Print offset
             const offset = (startPos + i).toString(16).padStart(8, '0');
             let hexLine = `${offset}: `;
             let asciiLine = '  ';
+            let positionLine = showPositionIndicator ? '        ' : ''; // Align with hex values
 
             // Print hex values
             for (let j = 0; j < bytesPerLine; j++) {
                 if (i + j < bytes.length) {
                     const byte = bytes[i + j];
                     hexLine += byte.toString(16).padStart(2, '0') + ' ';
-                    // Print ASCII representation (if printable)
                     asciiLine += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
+                    
+                    // Add position indicator
+                    if (showPositionIndicator) {
+                        positionLine += (startPos + i + j === this.offset) ? '^  ' : '   ';
+                    }
                 } else {
                     hexLine += '   ';
                     asciiLine += ' ';
+                    if (showPositionIndicator) {
+                        positionLine += '   ';
+                    }
                 }
                 
                 // Add extra space after 8 bytes for readability
                 if (j === 7) {
                     hexLine += ' ';
+                    if (showPositionIndicator) {
+                        positionLine += ' ';
+                    }
                 }
             }
 
             console.log(hexLine + asciiLine);
+            if (showPositionIndicator && (startPos + i <= this.offset && this.offset < startPos + i + bytesPerLine)) {
+                console.log(positionLine);
+            }
         }
     }
 }
