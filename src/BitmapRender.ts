@@ -64,7 +64,6 @@ export class BitmapRender {
     }
 
     static async renderPaletteDebug(palette: Palette, outputPath: string): Promise<void> {
-        // Create a canvas with 16x16 grid of colors (256 colors total)
         const CELL_SIZE = 32; // pixels per color cell
         const GRID_SIZE = 16; // 16x16 grid for 256 colors
         const canvas = createCanvas(CELL_SIZE * GRID_SIZE, CELL_SIZE * GRID_SIZE);
@@ -79,10 +78,11 @@ export class BitmapRender {
             ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`;
             ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
 
-            // Draw color index
+            // Draw color index in hex and decimal
             ctx.fillStyle = this.getContrastingColor(color);
             ctx.font = '10px Arial';
-            ctx.fillText(i.toString(), x + 2, y + 12);
+            ctx.fillText(`0x${i.toString(16).padStart(2, '0')}`, x + 2, y + 12);
+            ctx.fillText(`${i}`, x + 2, y + 24);
         }
 
         // Save the canvas to a file
