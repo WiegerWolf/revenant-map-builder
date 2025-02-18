@@ -7,45 +7,49 @@ async function main() {
     const gameDir = join('_INSTALLED_GAME', 'Revenant');
     
     try {
-        // Load class definitions first (needed by DatParser)
         await DatParser.loadClassDefinitions(gameDir);
-
-        // Load specific resource file
         const resourcePath = 'Cave/cavbones1.i2d';
         console.log(`Loading resource file: ${resourcePath}`);
         const resource = await DatParser.loadResourceFile(gameDir, resourcePath);
         
         if (resource) {
             console.log('Resource loaded successfully!');
-            console.log('Number of bitmaps:', resource.bitmaps.length);
             
-            // Print details of each bitmap
-            resource.bitmaps.forEach(async (bitmap, index) => {
-                console.log(`\nBitmap ${index}:`);
-                console.log('Width:', bitmap.width);
-                console.log('Height:', bitmap.height);
-                console.log('Flags:', bitmap.flags);
-                console.log('Palette size:', bitmap.palette?.length);
-
-                // Setup paths for saving the bitmap and palette
+            for (let bitmapIndex = 0; bitmapIndex < resource.bitmaps.length; bitmapIndex++) {
+                const bitmap = resource.bitmaps[bitmapIndex];
                 const relativePath = resourcePath.replace('.i2d', '');
-                const outputPath = join('_OUTPUT/Imagery', relativePath, `bitmap_${index}.png`);
-                const palletOutputPath = join('_OUTPUT/Imagery', relativePath, `palette_${index}.png`);
+                const bitmapDir = join('_OUTPUT/Imagery', relativePath, `bitmap_${bitmapIndex}`);
+                
+                // Create directory for this bitmap
+                await fs.mkdir(bitmapDir, { recursive: true });
 
-                // Create directories if they don't exist
-                await fs.mkdir(dirname(outputPath), { recursive: true });
-
-                // Save bitmap and palette
-                await BitmapRender.renderBitmap(bitmap, outputPath);
-                console.log(`Bitmap saved to ${outputPath}`);
-
-                if (bitmap.palette) {
-                    await BitmapRender.renderPaletteDebug(bitmap.palette, palletOutputPath);
-                    console.log(`Palette saved to ${palletOutputPath}`);
-                } else {
-                    console.warn(`No palette for bitmap ${index}`);
+                // Save main bitmap if it has direct pixel data
+                if (!bitmap.flags.bm_chunked && bitmap.data) {
+                    const outputPath = join(bitmapDir, 'full.png');
+                    await BitmapRender.renderBitmap(bitmap, outputPath);
+                    console.log(`Bitmap saved to ${outputPath}`);
                 }
-            });
+
+                // Save palette if available
+                if (bitmap.palette && typeof bitmap.palette !== 'number') {
+                    const palettePath = join(bitmapDir, 'palette.png');
+                    await BitmapRender.renderPaletteDebug(bitmap.palette, palettePath);
+                    console.log(`Palette saved to ${palettePath}`);
+                }
+
+                // Save individual chunk blocks if present
+                if (bitmap.chunkHeader && bitmap.chunkBlocks) {
+                    console.log(`Processing ${bitmap.chunkBlocks.length} chunk blocks for bitmap ${bitmapIndex}`);
+                    const blocksDir = join(bitmapDir, 'blocks');
+                    await fs.mkdir(blocksDir, { recursive: true });
+
+                    for (let blockIndex = 0; blockIndex < bitmap.chunkBlocks.length; blockIndex++) {
+                        const blockPath = join(blocksDir, `block_${blockIndex}.png`);
+                        await BitmapRender.renderChunkBlock(bitmap, blockIndex, blockPath);
+                        console.log(`Chunk block ${blockIndex} saved to ${blockPath}`);
+                    }
+                }
+            }
         } else {
             console.error('Failed to load resource!');
         }

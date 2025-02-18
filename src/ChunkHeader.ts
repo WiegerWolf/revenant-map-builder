@@ -1,6 +1,8 @@
 import { InputStream } from './InputStream';
 
 export class ChunkHeader {
+    readonly blockWidth: number = 64;
+    readonly blockHeight: number = 64;
     readonly compressedType: number;
     readonly widthInBlocks: number;
     readonly heightInBlocks: number;

@@ -216,4 +216,42 @@ export class BitmapRender {
             a: this.DEFAULT_ALPHA
         };
     }
+
+    static async renderChunkBlock(bitmap: BitmapDataType, blockIndex: number, outputPath: string): Promise<void> {
+        if (!bitmap.chunkHeader || !bitmap.chunkBlocks || !bitmap.chunkBlocks[blockIndex]) {
+            throw new Error('Invalid chunk block data');
+        }
+
+        const chunkHeader = bitmap.chunkHeader;
+        const blockWidth = chunkHeader.blockWidth;
+        const blockHeight = chunkHeader.blockHeight;
+        const canvas = createCanvas(blockWidth, blockHeight);
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.createImageData(blockWidth, blockHeight);
+        const chunkBlock = bitmap.chunkBlocks[blockIndex];
+
+        // Fill the image data with the chunk block data
+        for (let y = 0; y < blockHeight; y++) {
+            for (let x = 0; x < blockWidth; x++) {
+                const pixelIndex = (y * blockWidth + x);
+                const dataIndex = pixelIndex * 4;
+                const paletteIndex = chunkBlock.data[pixelIndex];
+                
+                const color = bitmap.palette && typeof bitmap.palette !== 'number' 
+                    ? this.getPaletteColor(bitmap.palette, paletteIndex, bitmap.flags.bm_5bitpal)
+                    : { r: 0, g: 0, b: 0, a: this.DEFAULT_ALPHA };
+
+                imageData.data[dataIndex] = color.r;
+                imageData.data[dataIndex + 1] = color.g;
+                imageData.data[dataIndex + 2] = color.b;
+                imageData.data[dataIndex + 3] = color.a;
+            }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Save the canvas to a file
+        const buffer = canvas.toBuffer('image/png');
+        await fs.writeFile(outputPath, buffer);
+    }
 }
