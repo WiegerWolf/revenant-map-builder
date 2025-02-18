@@ -1,6 +1,7 @@
 import { createCanvas, ImageData } from 'canvas';
 import { promises as fs } from 'fs';
 import { BitmapFlags } from './BitmapFlags';
+import { DecompressionMethod } from './types';
 import type { BitmapDataType, Palette } from './types';
 
 interface RGBColor {
@@ -253,5 +254,93 @@ export class BitmapRender {
         // Save the canvas to a file
         const buffer = canvas.toBuffer('image/png');
         await fs.writeFile(outputPath, buffer);
+    }
+
+    static async renderChunkBlockWithDecompressionMap(bitmap: BitmapDataType, blockIndex: number, outputPath: string, decompressionMapPath: string, overlayPath: string): Promise<void> {
+        if (!bitmap.chunkHeader || !bitmap.chunkBlocks || !bitmap.chunkBlocks[blockIndex]) {
+            throw new Error('Invalid chunk block data');
+        }
+
+        const chunkHeader = bitmap.chunkHeader;
+        const blockWidth = chunkHeader.blockWidth;
+        const blockHeight = chunkHeader.blockHeight;
+        const chunkBlock = bitmap.chunkBlocks[blockIndex];
+
+        // First render the normal image to a canvas
+        const baseCanvas = createCanvas(blockWidth, blockHeight);
+        const baseCtx = baseCanvas.getContext('2d');
+        const baseImageData = baseCtx.createImageData(blockWidth, blockHeight);
+
+        // Fill the base image data with the chunk block data
+        for (let y = 0; y < blockHeight; y++) {
+            for (let x = 0; x < blockWidth; x++) {
+                const pixelIndex = (y * blockWidth + x);
+                const dataIndex = pixelIndex * 4;
+                const paletteIndex = chunkBlock.data[pixelIndex];
+                
+                const color = bitmap.palette && typeof bitmap.palette !== 'number' 
+                    ? this.getPaletteColor(bitmap.palette, paletteIndex, bitmap.flags.bm_5bitpal)
+                    : { r: 0, g: 0, b: 0, a: this.DEFAULT_ALPHA };
+
+                baseImageData.data[dataIndex] = color.r;
+                baseImageData.data[dataIndex + 1] = color.g;
+                baseImageData.data[dataIndex + 2] = color.b;
+                baseImageData.data[dataIndex + 3] = color.a;
+            }
+        }
+
+        baseCtx.putImageData(baseImageData, 0, 0);
+        
+        // Save the base image
+        await fs.writeFile(outputPath, baseCanvas.toBuffer('image/png'));
+
+        // Create decompression map visualization
+        const decompCanvas = createCanvas(blockWidth, blockHeight);
+        const decompCtx = decompCanvas.getContext('2d');
+        const decompImageData = decompCtx.createImageData(blockWidth, blockHeight);
+
+        // Define colors for each decompression method
+        const methodColors: Record<DecompressionMethod, RGBColor> = {
+            [DecompressionMethod.RAW]: { r: 0, g: 255, b: 0, a: 128 },       // RAW: Green
+            [DecompressionMethod.RLE_SKIP]: { r: 255, g: 0, b: 0, a: 128 },  // RLE_SKIP: Red
+            [DecompressionMethod.RLE_REPEAT]: { r: 0, g: 0, b: 255, a: 128 },// RLE_REPEAT: Blue
+            [DecompressionMethod.LZ]: { r: 255, g: 255, b: 0, a: 128 }       // LZ: Yellow
+        };
+
+        const defaultColor: RGBColor = { r: 128, g: 128, b: 128, a: 128 };  // Gray for unknown methods
+
+        // Fill the decompression map data
+        if (chunkBlock.decompressionMap) {
+            for (let y = 0; y < blockHeight; y++) {
+                for (let x = 0; x < blockWidth; x++) {
+                    const pixelIndex = (y * blockWidth + x);
+                    const dataIndex = pixelIndex * 4;
+                    const method = chunkBlock.decompressionMap[pixelIndex];
+                    const color = methodColors[method as DecompressionMethod] || defaultColor;
+
+                    decompImageData.data[dataIndex] = color.r;
+                    decompImageData.data[dataIndex + 1] = color.g;
+                    decompImageData.data[dataIndex + 2] = color.b;
+                    decompImageData.data[dataIndex + 3] = color.a;
+                }
+            }
+        }
+
+        decompCtx.putImageData(decompImageData, 0, 0);
+        
+        // Save the decompression map
+        await fs.writeFile(decompressionMapPath, decompCanvas.toBuffer('image/png'));
+
+        // Create the overlay by combining both images
+        const overlayCanvas = createCanvas(blockWidth, blockHeight);
+        const overlayCtx = overlayCanvas.getContext('2d');
+        
+        // Draw the base image first
+        overlayCtx.drawImage(baseCanvas, 0, 0);
+        // Then overlay the decompression map with alpha blending
+        overlayCtx.drawImage(decompCanvas, 0, 0);
+
+        // Save the overlay
+        await fs.writeFile(overlayPath, overlayCanvas.toBuffer('image/png'));
     }
 }

@@ -8,7 +8,9 @@ async function main() {
     
     try {
         await DatParser.loadClassDefinitions(gameDir);
-        const resourcePath = 'Cave/cavbones1.i2d';
+        // const resourcePath = 'Cave/cavbones1.i2d';
+        // const resourcePath = 'Misc/dragonent.i2d';
+        const resourcePath = 'Forest/forbirch001.i2d';
         console.log(`Loading resource file: ${resourcePath}`);
         const resource = await DatParser.loadResourceFile(gameDir, resourcePath);
         
@@ -23,20 +25,6 @@ async function main() {
                 // Create directory for this bitmap
                 await fs.mkdir(bitmapDir, { recursive: true });
 
-                // Save main bitmap if it has direct pixel data
-                if (!bitmap.flags.bm_chunked && bitmap.data) {
-                    const outputPath = join(bitmapDir, 'full.png');
-                    await BitmapRender.renderBitmap(bitmap, outputPath);
-                    console.log(`Bitmap saved to ${outputPath}`);
-                }
-
-                // Save palette if available
-                if (bitmap.palette && typeof bitmap.palette !== 'number') {
-                    const palettePath = join(bitmapDir, 'palette.png');
-                    await BitmapRender.renderPaletteDebug(bitmap.palette, palettePath);
-                    console.log(`Palette saved to ${palettePath}`);
-                }
-
                 // Save individual chunk blocks if present
                 if (bitmap.chunkHeader && bitmap.chunkBlocks) {
                     console.log(`Processing ${bitmap.chunkBlocks.length} chunk blocks for bitmap ${bitmapIndex}`);
@@ -45,8 +33,18 @@ async function main() {
 
                     for (let blockIndex = 0; blockIndex < bitmap.chunkBlocks.length; blockIndex++) {
                         const blockPath = join(blocksDir, `block_${blockIndex}.png`);
-                        await BitmapRender.renderChunkBlock(bitmap, blockIndex, blockPath);
+                        const decompressionMapPath = join(blocksDir, `block_${blockIndex}_decompression.png`);
+                        const overlayPath = join(blocksDir, `block_${blockIndex}_overlay.png`);
+                        await BitmapRender.renderChunkBlockWithDecompressionMap(
+                            bitmap, 
+                            blockIndex, 
+                            blockPath, 
+                            decompressionMapPath,
+                            overlayPath
+                        );
                         console.log(`Chunk block ${blockIndex} saved to ${blockPath}`);
+                        console.log(`Decompression map saved to ${decompressionMapPath}`);
+                        console.log(`Overlay saved to ${overlayPath}`);
                     }
                 }
             }
