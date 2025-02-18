@@ -108,7 +108,6 @@ export class CGSResourceParser {
         if (padding > 0) {
             console.warn(`Padding walkmap data by ${padding} bytes`);
             stream.skip(padding);
-            debugger;
         }
 
         // Skip unknown data
@@ -174,8 +173,8 @@ export class CGSResourceParser {
 
                 await fs.mkdir(dirname(palletOutputPath), { recursive: true });
                 await BitmapRender.renderPaletteDebug(bitmap.palette, palletOutputPath);
-                await fs.mkdir(dirname(outputPath), { recursive: true });
-                await BitmapRender.renderBitmap(bitmap, outputPath);
+                // await fs.mkdir(dirname(outputPath), { recursive: true });
+                // await BitmapRender.renderBitmap(bitmap, outputPath);
 
                 // Perform sanity checks and conversions
                 if (bitmap.width > 8192 || bitmap.height > 8192) {
