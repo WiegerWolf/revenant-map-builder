@@ -4,10 +4,10 @@ export class ChunkDecompressor {
     static decompressChunk(stream, blockWidth, blockHeight, clear = 1) {
         // Get chunk number from stream
         const number = stream.readUint8();
-        const bite1 = stream.readUint8();
-        const bite2 = stream.readUint8();
-        const bite3 = stream.readUint8();
-        console.log(`Decompressing chunk ${number} with flags ${bite1} ${bite2} ${bite3}`);
+        const flag1 = stream.readUint8();
+        const flag2 = stream.readUint8();
+        const flag3 = stream.readUint8();
+        console.log(`Decompressing chunk ${number} with flags ${flag1} ${flag2} ${flag3}`);
 
         // Get compression markers
         const rleMarker = stream.readUint8();
@@ -87,6 +87,9 @@ export class ChunkDecompressor {
 
         return {
             number,
+            flag1,
+            flag2,
+            flag3,
             data: finalDest
         };
     }
