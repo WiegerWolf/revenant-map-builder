@@ -108,7 +108,7 @@ export class BitmapData {
                                 flag1: 0,
                                 flag2: 0,
                                 flag3: 0,
-                                data: new Uint8Array(64 * 64) // Blank block
+                                data: new Uint8Array(63 * 63) // Blank block
                             });
                             continue;
                         }
