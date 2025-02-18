@@ -9,8 +9,8 @@ async function main() {
     try {
         await DatParser.loadClassDefinitions(gameDir);
         // const resourcePath = 'Cave/cavbones1.i2d';
-        // const resourcePath = 'Misc/dragonent.i2d';
-        const resourcePath = 'Forest/forbirch001.i2d';
+        const resourcePath = 'Misc/dragonent.i2d';
+        // const resourcePath = 'Forest/forbirch001.i2d';
         console.log(`Loading resource file: ${resourcePath}`);
         const resource = await DatParser.loadResourceFile(gameDir, resourcePath);
         
