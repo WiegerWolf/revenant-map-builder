@@ -3,7 +3,7 @@ import type { ChunkBlock } from './types';
 import { InputStream } from './InputStream';
 
 export class ChunkDecompressor {
-    static decompressChunk(stream: InputStream, blockWidth: number, blockHeight: number, clear: number = 1): ChunkBlock {
+    static decompressChunk(stream: InputStream): ChunkBlock {
         // Get chunk number from stream
         const number = stream.readUint8();
         const flag1 = stream.readUint8();
@@ -15,16 +15,20 @@ export class ChunkDecompressor {
         const rleMarker = stream.readUint8();
         const lzMarker = stream.readUint8();
 
-        // Create destination buffer with the correct size
-        let dest = new Uint8Array(blockWidth * blockHeight);
-        const clearValue = clear === 1 ? 0x00 : 0xFF;
-        dest.fill(clearValue);
-
+        // Start with a small buffer that will grow as needed
+        let dest = new Uint8Array(1024);
         let dstPos = 0;
 
         try {
             while (!stream.eof()) {
                 const byte = stream.readUint8();
+
+                // Ensure we have room for at least a few more bytes
+                if (dstPos >= dest.length - 256) {
+                    const newDest = new Uint8Array(dest.length * 2);
+                    newDest.set(dest);
+                    dest = newDest;
+                }
 
                 if (byte === rleMarker) {
                     // RLE compression
@@ -37,12 +41,6 @@ export class ChunkDecompressor {
                     } else {
                         // Normal RLE
                         const value = stream.readUint8();
-                        // Ensure dest array is large enough
-                        if (dstPos + count > dest.length) {
-                            const newDest = new Uint8Array(dest.length * 2);
-                            newDest.set(dest);
-                            dest = newDest;
-                        }
                         for (let i = 0; i < count; i++) {
                             dest[dstPos++] = value;
                         }
@@ -52,13 +50,6 @@ export class ChunkDecompressor {
                     const count = stream.readUint8();
                     const offset = stream.readUint16();
 
-                    // Ensure dest array is large enough
-                    if (dstPos + count > dest.length) {
-                        const newDest = new Uint8Array(dest.length * 2);
-                        newDest.set(dest);
-                        dest = newDest;
-                    }
-
                     // Copy from earlier in the output
                     for (let i = 0; i < count; i++) {
                         dest[dstPos] = dest[dstPos - offset];
@@ -66,12 +57,6 @@ export class ChunkDecompressor {
                     }
                 } else {
                     // Raw byte
-                    // Ensure dest array is large enough
-                    if (dstPos >= dest.length) {
-                        const newDest = new Uint8Array(dest.length * 2);
-                        newDest.set(dest);
-                        dest = newDest;
-                    }
                     dest[dstPos++] = byte;
                 }
             }
