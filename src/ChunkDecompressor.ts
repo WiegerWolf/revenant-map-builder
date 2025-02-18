@@ -1,7 +1,9 @@
 import { EOFError } from './InputStream';
+import type { ChunkBlock } from './types';
+import { InputStream } from './InputStream';
 
 export class ChunkDecompressor {
-    static decompressChunk(stream, blockWidth, blockHeight, clear = 1) {
+    static decompressChunk(stream: InputStream, blockWidth: number, blockHeight: number, clear: number = 1): ChunkBlock {
         // Get chunk number from stream
         const number = stream.readUint8();
         const flag1 = stream.readUint8();
@@ -13,7 +15,6 @@ export class ChunkDecompressor {
         const rleMarker = stream.readUint8();
         const lzMarker = stream.readUint8();
 
-        // Create destination buffer (start with expected size, but might grow)
         // Create destination buffer with the correct size
         let dest = new Uint8Array(blockWidth * blockHeight);
         const clearValue = clear === 1 ? 0x00 : 0xFF;
