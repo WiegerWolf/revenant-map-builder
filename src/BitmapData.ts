@@ -100,8 +100,16 @@ export class BitmapData {
                 // Process each block
                 for (let y = 0; y < chunkHeader.heightInBlocks; y++) {
                     for (let x = 0; x < chunkHeader.widthInBlocks; x++) {
+                        bitmap.chunkBlocks = bitmap.chunkBlocks || [];
                         if (chunkHeader.isBlockBlank(x, y)) {
                             // This is a blank block, skip it
+                            bitmap.chunkBlocks.push({
+                                number: chunkHeader.getBlockIndex(x, y),
+                                flag1: 0,
+                                flag2: 0,
+                                flag3: 0,
+                                data: new Uint8Array(64 * 64) // Blank block
+                            });
                             continue;
                         }
 
@@ -119,7 +127,6 @@ export class BitmapData {
                             blockSize
                         );
                         const chunkBlock = ChunkDecompressor.decompressChunk(blockStream);
-                        bitmap.chunkBlocks = bitmap.chunkBlocks || [];
                         bitmap.chunkBlocks.push(chunkBlock);
                     }
                 }
