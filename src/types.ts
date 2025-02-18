@@ -1,5 +1,6 @@
 import { BitmapFlags } from './BitmapFlags';
 import { DrawModeFlags } from './DrawModeFlags';
+import { ChunkHeader } from './ChunkHeader';
 
 export interface Palette {
     colors: Uint16Array;
@@ -26,4 +27,14 @@ export interface BitmapDataType {
     palette: number | Palette;
     datasize: number;
     data: Uint8Array | Uint16Array | Uint32Array | null;
+    chunkHeader: ChunkHeader | null;
+    chunkBlocks: ChunkBlock[] | null;
+}
+
+export interface ChunkBlock {
+    number: number;
+    flag1: number;
+    flag2: number;
+    flag3: number;
+    data: Uint8Array;
 }
