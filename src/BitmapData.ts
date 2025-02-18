@@ -45,7 +45,9 @@ export class BitmapData {
             palettesize: 0,
             palette: 0,
             datasize: 0,
-            data: null
+            data: null,
+            chunkHeader: null,
+            chunkBlocks: null
         };
 
         // Read all size/offset pairs
@@ -92,80 +94,33 @@ export class BitmapData {
         if (bitmap.flags.bm_compressed) {
             if (bitmap.flags.bm_chunked) {
                 // The bitmap data directly points to a ChunkHeader
-                const mainHeader = new ChunkHeader(bitmapStream);
-
-                // Allocate the final bitmap data
-                if (bitmap.flags.bm_8bit) {
-                    bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 1);
-                } else if (bitmap.flags.bm_15bit || bitmap.flags.bm_16bit) {
-                    bitmap.data = new Uint16Array(bitmap.width * bitmap.height * 1);
-                } else if (bitmap.flags.bm_24bit) {
-                    // For 24-bit, we need to handle RGBTRIPLE structure
-                    bitmap.data = new Uint8Array(bitmap.width * bitmap.height * 3);
-                } else if (bitmap.flags.bm_32bit) {
-                    bitmap.data = new Uint32Array(bitmap.width * bitmap.height * 1);
-                }
+                const chunkHeader = new ChunkHeader(bitmapStream);
+                bitmap.chunkHeader = chunkHeader;
 
                 // Process each block
-                for (let y = 0; y < mainHeader.height; y++) {
-                    for (let x = 0; x < mainHeader.width; x++) {
-                        if (mainHeader.isBlockBlank(x, y)) {
+                for (let y = 0; y < chunkHeader.heightInBlocks; y++) {
+                    for (let x = 0; x < chunkHeader.widthInBlocks; x++) {
+                        if (chunkHeader.isBlockBlank(x, y)) {
                             // This is a blank block, skip it
                             continue;
                         }
 
-                        // Calculate the block width and height for each block
-                        const blockWidth = BitmapData.calculateBlockWidth(x, bitmap, mainHeader);
-                        const blockHeight = BitmapData.calculateBlockHeight(y, bitmap, mainHeader);
-
-                        const destX = x * BitmapData.calculateBlockWidth(0, bitmap, mainHeader);
-                        const destY = y * BitmapData.calculateBlockHeight(0, bitmap, mainHeader);
-
                         // Process non-blank block
-                        const blockOffset = mainHeader.getBlockOffset(x, y);
-                        let blockSize = mainHeader.getBlockSize(x, y);
+                        const blockOffset = chunkHeader.getBlockOffset(x, y);
+                        let blockSize = chunkHeader.getBlockSize(x, y);
                         if (blockSize === 0) {
                             // This is a special case where the block size is 0,
                             // which means it's the last block in the file
                             blockSize = bitmapBuffer.byteLength - blockOffset;
                         }
-                        const { buffer: blockBuffer, stream: blockStream } = BufferUtils.createBufferSlice(
+                        const { stream: blockStream } = BufferUtils.createBufferSlice(
                             bitmapBuffer,
                             blockOffset,
                             blockSize
                         );
-                        const { number, data: decompressed } = ChunkDecompressor.decompressChunk(blockStream, blockWidth, blockHeight);
-                        // create a stream from the decompressed data
-                        const decompressedStream = new InputStream(decompressed.buffer);
-
-                        // Copy the decompressed chunk to the right position
-                        if (bitmap.flags.bm_8bit && bitmap.data instanceof Uint8Array) {
-                            // Copy each row of the decompressed data to the correct position
-                            for (let row = 0; row < blockHeight; row++) {
-                                // Skip if we're past the bitmap height
-                                if (destY + row >= bitmap.height) break;
-
-                                // Calculate source and destination positions for this row
-                                const srcOffset = row * blockWidth;
-                                const dstOffset = (destY + row) * bitmap.width + destX;
-
-                                // Calculate how many pixels to copy (handle edge cases)
-                                const pixelsToCopy = Math.min(
-                                    blockWidth, // Pixels in this row in the block
-                                    bitmap.width - destX, // Available width in destination
-                                    decompressed.length - srcOffset // Available data in source
-                                );
-
-                                // Copy the row
-                                bitmap.data.set(
-                                    decompressed.subarray(srcOffset, srcOffset + pixelsToCopy),
-                                    dstOffset
-                                );
-                            }
-                        } else {
-                            console.warn('Unsupported bitmap format, will be implemented later', bitmap.flags);
-                            debugger;
-                        }
+                        const chunkBlock = ChunkDecompressor.decompressChunk(blockStream);
+                        bitmap.chunkBlocks = bitmap.chunkBlocks || [];
+                        bitmap.chunkBlocks.push(chunkBlock);
                     }
                 }
             } else {
@@ -257,26 +212,5 @@ export class BitmapData {
         }
 
         return bitmap;
-    }
-
-    // Helper functions to calculate block dimensions
-    private static calculateBlockWidth(x: number, bitmap: BitmapDataType, mainHeader: ChunkHeader): number {
-        const baseBlockWidth = Math.floor(bitmap.width / mainHeader.width);
-        if (x < mainHeader.width - 1) {
-            return baseBlockWidth;
-        } else {
-            // Last block may be wider if bitmap.width is not perfectly divisible
-            return bitmap.width - baseBlockWidth * (mainHeader.width - 1);
-        }
-    }
-
-    private static calculateBlockHeight(y: number, bitmap: BitmapDataType, mainHeader: ChunkHeader): number {
-        const baseBlockHeight = Math.floor(bitmap.height / mainHeader.height);
-        if (y < mainHeader.height - 1) {
-            return baseBlockHeight;
-        } else {
-            // Last block may be taller if bitmap.height is not perfectly divisible
-            return bitmap.height - baseBlockHeight * (mainHeader.height - 1);
-        }
     }
 }
