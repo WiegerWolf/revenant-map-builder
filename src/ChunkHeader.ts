@@ -1,8 +1,9 @@
 import { InputStream } from './InputStream';
+import { CHUNK_WIDTH, CHUNK_HEIGHT } from './constants';
 
 export class ChunkHeader {
-    readonly blockWidth: number = 63;
-    readonly blockHeight: number = 63;
+    readonly blockWidth: number = CHUNK_WIDTH;
+    readonly blockHeight: number = CHUNK_HEIGHT;
     readonly compressedType: number;
     readonly widthInBlocks: number;
     readonly heightInBlocks: number;

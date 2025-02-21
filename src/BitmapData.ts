@@ -2,6 +2,7 @@ import { BitmapFlags } from './BitmapFlags';
 import { BufferUtils } from './BufferUtils';
 import { ChunkDecompressor } from './ChunkDecompressor';
 import { ChunkHeader } from './ChunkHeader';
+import { CHUNK_SIZE } from './constants';
 import { DrawModeFlags } from './DrawModeFlags';
 import { InputStream } from './InputStream';
 import type { BitmapDataType } from './types';
@@ -108,7 +109,7 @@ export class BitmapData {
                                 flag1: 0,
                                 flag2: 0,
                                 flag3: 0,
-                                data: new Uint8Array(63 * 63) // Blank block
+                                data: new Uint8Array(CHUNK_SIZE) // Blank block
                             });
                             continue;
                         }

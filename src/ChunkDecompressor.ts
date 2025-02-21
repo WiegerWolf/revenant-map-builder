@@ -2,97 +2,137 @@ import { EOFError } from './InputStream';
 import type { ChunkBlock } from './types';
 import { DecompressionMethod } from './types';
 import { InputStream } from './InputStream';
+import { CHUNK_SIZE } from './constants';
 
 export class ChunkDecompressor {
     static decompressChunk(stream: InputStream): ChunkBlock {
-        // Get chunk number from stream
+        // Get chunk 32-bit header value (stored as 4 separate bytes for compatibility)
         const number = stream.readUint8();
         const flag1 = stream.readUint8();
         const flag2 = stream.readUint8();
         const flag3 = stream.readUint8();
-        console.log(`Decompressing chunk ${number} with flags ${flag1} ${flag2} ${flag3}`);
 
-        // Get compression markers
+        // Get compression markers (DLE bytes)
         const rleMarker = stream.readUint8();
         const lzMarker = stream.readUint8();
 
-        // Start with a small buffer that will grow as needed
-        let dest = new Uint8Array(1024);
-        let decompMap = new Uint8Array(1024);  // Track decompression method
+        // Initialize destination buffer with zeros - ensure DWORD alignment
+        const alignedBuffer = new ArrayBuffer(Math.ceil(CHUNK_SIZE / 4) * 4);
+        let dest = new Uint8Array(alignedBuffer, 0, CHUNK_SIZE);
+        let decompMap = new Uint8Array(CHUNK_SIZE);
+        dest.fill(0);
         let dstPos = 0;
 
         try {
-            while (!stream.eof()) {
+            while (dstPos < CHUNK_SIZE && !stream.eof()) {
                 const byte = stream.readUint8();
 
-                // Ensure we have room for at least a few more bytes
-                if (dstPos >= dest.length - 256) {
-                    const newDest = new Uint8Array(dest.length * 2);
-                    const newDecompMap = new Uint8Array(dest.length * 2);
-                    newDest.set(dest);
-                    newDecompMap.set(decompMap);
-                    dest = newDest;
-                    decompMap = newDecompMap;
-                }
-
                 if (byte === rleMarker) {
-                    // RLE compression
                     let count = stream.readUint8();
-
+                    
                     if (count & 0x80) {
-                        // Skip RLE
+                        // Skip RLE mode
                         count &= 0x7F;
                         for (let i = 0; i < count; i++) {
                             decompMap[dstPos + i] = DecompressionMethod.RLE_SKIP;
                         }
                         dstPos += count;
                     } else {
-                        // Normal RLE
+                        // Normal RLE mode - optimize for DWORD alignment when possible
                         const value = stream.readUint8();
-                        for (let i = 0; i < count; i++) {
+                        const dwordCount = Math.floor(count / 4);
+                        const remainingBytes = count % 4;
+                        
+                        // Fill DWORDs
+                        const dwordValue = (value << 24) | (value << 16) | (value << 8) | value;
+                        
+                        if (dwordCount > 0) {
+                            const dwordView = new Uint32Array(alignedBuffer, Math.floor(dstPos / 4) * 4);
+                            for (let i = 0; i < dwordCount && dstPos + (i * 4) < CHUNK_SIZE; i++) {
+                                if ((dstPos & 3) === 0) {
+                                    dwordView[i] = dwordValue;
+                                    decompMap.fill(DecompressionMethod.RLE_REPEAT, dstPos, dstPos + 4);
+                                    dstPos += 4;
+                                } else {
+                                    // Fallback for unaligned positions
+                                    for (let j = 0; j < 4 && dstPos < CHUNK_SIZE; j++) {
+                                        dest[dstPos] = value;
+                                        decompMap[dstPos] = DecompressionMethod.RLE_REPEAT;
+                                        dstPos++;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Handle remaining bytes
+                        for (let i = 0; i < remainingBytes && dstPos < CHUNK_SIZE; i++) {
                             dest[dstPos] = value;
                             decompMap[dstPos] = DecompressionMethod.RLE_REPEAT;
                             dstPos++;
                         }
                     }
                 } else if (byte === lzMarker) {
-                    // LZ compression
+                    // LZ compression - sliding window copy
                     const count = stream.readUint8();
                     const offset = stream.readUint16();
-
-                    // Copy from earlier in the output
-                    for (let i = 0; i < count; i++) {
-                        dest[dstPos] = dest[dstPos - offset];
-                        decompMap[dstPos] = DecompressionMethod.LZ;
-                        dstPos++;
+                    
+                    if (count < 4 || offset < 4) {
+                        // Short copies or small offsets - byte by byte
+                        for (let i = 0; i < count && dstPos < CHUNK_SIZE; i++) {
+                            dest[dstPos] = dest[dstPos - offset];
+                            decompMap[dstPos] = DecompressionMethod.LZ;
+                            dstPos++;
+                        }
+                    } else {
+                        // Optimize longer copies based on alignment
+                        let srcPos = dstPos - offset;
+                        let remaining = count;
+                        
+                        // Handle DWORD-aligned copies when possible
+                        if ((srcPos & 3) === 0 && (dstPos & 3) === 0 && remaining >= 4) {
+                            const srcView = new Uint32Array(alignedBuffer, Math.floor(srcPos / 4) * 4);
+                            const dstView = new Uint32Array(alignedBuffer, Math.floor(dstPos / 4) * 4);
+                            
+                            while (remaining >= 4 && dstPos + 4 <= CHUNK_SIZE) {
+                                dstView[0] = srcView[0];
+                                decompMap.fill(DecompressionMethod.LZ, dstPos, dstPos + 4);
+                                dstPos += 4;
+                                srcPos += 4;
+                                remaining -= 4;
+                            }
+                        }
+                        
+                        // Handle remaining bytes
+                        while (remaining > 0 && dstPos < CHUNK_SIZE) {
+                            dest[dstPos] = dest[dstPos - offset];
+                            decompMap[dstPos] = DecompressionMethod.LZ;
+                            dstPos++;
+                            remaining--;
+                        }
                     }
                 } else {
-                    // Raw byte
-                    dest[dstPos] = byte;
-                    decompMap[dstPos] = DecompressionMethod.RAW;
-                    dstPos++;
+                    // Raw byte copy
+                    if (dstPos < CHUNK_SIZE) {
+                        dest[dstPos] = byte;
+                        decompMap[dstPos] = DecompressionMethod.RAW;
+                        dstPos++;
+                    }
                 }
             }
         } catch (e) {
             if (!(e instanceof EOFError)) {
                 console.error("Error decompressing chunk:", e);
-                debugger;
+                throw e;
             }
         }
-
-        // Trim the arrays to actual size
-        const finalDest = new Uint8Array(dstPos);
-        const finalDecompMap = new Uint8Array(dstPos);
-        finalDest.set(dest.subarray(0, dstPos));
-        finalDecompMap.set(decompMap.subarray(0, dstPos));
 
         return {
             number,
             flag1,
             flag2,
             flag3,
-            data: finalDest,
-            decompressionMap: finalDecompMap
+            data: dest,
+            decompressionMap: decompMap
         };
     }
 }
